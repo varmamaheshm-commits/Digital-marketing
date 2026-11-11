@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { planAutopilot } from '../src/core/autopilot';
 import { buildCopy, buildScript } from '../src/core/copy';
 import { changePassword, createVault, lockoutDelayMs, open, openJson, passwordStrength, seal, sealJson, unlockWithPassword, unlockWithRecoveryKey } from '../src/core/crypto';
+import { draftAnswer, search } from '../src/core/knowledge';
 import { leadsFromCsv, leadsToCsv, scoreLead } from '../src/core/leads';
 import type { Data } from '../src/core/store';
 import { DEFAULT_SETTINGS, type Lead, type Product } from '../src/core/types';
@@ -9,7 +10,8 @@ import { DEFAULT_SETTINGS, type Lead, type Product } from '../src/core/types';
 const IT = 1000; // low PBKDF2 cost keeps tests fast; production uses 600,000
 const product: Product = { id: 'p1', name: 'Glow Serum', category: 'skincare', description: 'A light vitamin C serum. Brightens in two weeks.', price: '499', offer: '20% off', features: ['Vitamin C', 'No parabens', 'Dermatologist tested', 'Vegan'], audience: 'busy women', keywords: ['glow'], imageIds: [], active: true, createdAt: 0 };
 const lead = (over: Partial<Lead> = {}): Lead => ({ id: 'l1', name: 'Asha Rao', phone: '9876543210', email: '', source: 'instagram', stage: 'new', score: 0, notes: '', consent: true, value: 0, createdAt: 1_000_000, ...over });
-const data = (over: Partial<Data> = {}): Data => ({ products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], settings: [], ...over });
+const data = (over: Partial<Data> = {}): Data => ({ products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], settings: [], ...over });
+const ALL = { ...DEFAULT_SETTINGS, approvals: 'all' as const };
 
 describe('vault encryption', () => {
   it('unlocks with the right password and rejects a wrong one', async () => {
@@ -98,16 +100,46 @@ describe('leads', () => {
   });
 });
 
+describe('knowledge base', () => {
+  const docs = [
+    { id: 'd1', title: 'Policies', text: 'Returns are accepted within 7 days of delivery if the seal is unopened.\n\nDelivery takes 3 to 5 working days across India. Shipping is free above 999.', createdAt: 0 },
+    { id: 'd2', title: 'Glow Serum FAQ', text: 'Apply two drops every morning before sunscreen. Suitable for all skin types.', createdAt: 0 },
+  ];
+  it('finds the passage that answers a question', () => {
+    expect(search(docs, 'what is your return policy?')[0].text).toContain('Returns are accepted');
+    expect(search(docs, 'how long does delivery take')[0].text).toContain('3 to 5 working days');
+    expect(search(docs, 'how do I apply the serum')[0].title).toBe('Glow Serum FAQ');
+    expect(search(docs, 'cryptocurrency')).toEqual([]);
+  });
+  it('drafts a reply only from the documents', () => {
+    const reply = draftAnswer(search(docs, 'return policy'), DEFAULT_SETTINGS, 'Asha Rao');
+    expect(reply).toContain('Hi Asha,');
+    expect(reply).toContain('within 7 days');
+    expect(draftAnswer([], DEFAULT_SETTINGS)).toContain('get back to you');
+  });
+});
+
 describe('autopilot', () => {
   const now = 1_700_000_000_000;
   it('queues one video per format, a week of posts and a welcome message – all awaiting approval', () => {
-    const plan = planAutopilot(data({ products: [product], leads: [lead({ createdAt: now })] }), DEFAULT_SETTINGS, now);
+    const plan = planAutopilot(data({ products: [product], leads: [lead({ createdAt: now })] }), ALL, now);
     expect(plan.videos.map((v) => v.format).sort()).toEqual(['reel', 'wide']);
     expect(plan.videos.every((v) => v.status === 'queued')).toBe(true);
     expect(plan.posts.length).toBe(DEFAULT_SETTINGS.autopilot.postsPerWeek);
     expect(plan.posts.every((p) => p.status === 'pending' && p.scheduledFor > now)).toBe(true);
     expect(plan.messages).toHaveLength(1);
     expect(plan.messages[0]).toMatchObject({ reason: 'welcome', status: 'pending', channel: 'whatsapp' });
+  });
+  it('by default holds only videos for approval and makes one video per language', () => {
+    const s = { ...DEFAULT_SETTINGS, autopilot: { ...DEFAULT_SETTINGS.autopilot, languages: ['en', 'te'] as const } };
+    const plan = planAutopilot(data({ products: [product], leads: [lead({ createdAt: now })] }), s as any, now);
+    expect(plan.videos.map((v) => `${v.format}-${v.lang}`).sort()).toEqual(['reel-en', 'reel-te', 'wide-en', 'wide-te']);
+    expect(plan.videos.every((v) => v.status === 'queued')).toBe(true);
+    expect(plan.posts.every((p) => p.status === 'approved')).toBe(true);
+    expect(plan.messages[0].status).toBe('approved');
+    const te = plan.videos.find((v) => v.lang === 'te')!;
+    expect(te.script.at(-1)!.text).toMatch(/[\u0C00-\u0C7F]/);
+    expect(te.script[1].text).toBe('Glow Serum');
   });
   it('does not duplicate work that already exists', () => {
     const d = data({ products: [product], leads: [lead({ createdAt: now })] });

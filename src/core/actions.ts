@@ -4,7 +4,7 @@ import { newVideo, planAutopilot } from './autopilot';
 import { buildCopy, buildLeadMessage } from './copy';
 import { scoreLead } from './leads';
 import { delBlob, getOne, getSnapshot, log, patch, put, remove } from './store';
-import { uid, type Lead, type Message, type MusicMood, type Platform, type Post, type Video, type VideoFormat, type VideoStyle } from './types';
+import { uid, type Lang, type Lead, type Message, type MusicMood, type Platform, type Post, type Video, type VideoFormat, type VideoStyle } from './types';
 
 let busy = false;
 export async function runAutopilot(): Promise<{ videos: number; posts: number; messages: number }> {
@@ -21,7 +21,7 @@ export async function runAutopilot(): Promise<{ videos: number; posts: number; m
     for (const m of plan.messages) await put('messages', m);
     const made = { videos: plan.videos.length, posts: plan.posts.length, messages: plan.messages.length };
     if (made.videos + made.posts + made.messages > 0) {
-      await log('auto', `Autopilot prepared ${made.videos} video(s), ${made.posts} post(s) and ${made.messages} lead message(s) for your approval.`);
+      await log('auto', `Autopilot prepared ${made.videos} video(s) for your approval, plus ${made.posts} post(s) and ${made.messages} lead message(s).`);
     }
     void pumpQueue();
     return made;
@@ -38,13 +38,14 @@ export function pendingCounts() {
   return { videos, posts, messages, total: videos + posts + messages };
 }
 
+const textStatus = () => (getSnapshot().settings.approvals === 'all' ? 'pending' : 'approved') as 'pending' | 'approved';
 const name = (productId?: string) => getOne('products', productId)?.name ?? 'product';
 
 // ----- videos -----
-export async function createVideo(productId: string, format: VideoFormat, style?: VideoStyle, mood?: MusicMood) {
+export async function createVideo(productId: string, format: VideoFormat, style?: VideoStyle, mood?: MusicMood, lang?: Lang) {
   const p = getOne('products', productId);
   if (!p) return;
-  await put('videos', newVideo(p, getSnapshot().settings, format, { style, mood }));
+  await put('videos', newVideo(p, getSnapshot().settings, format, { style, mood, lang }));
   void pumpQueue();
 }
 export async function decideVideo(id: string, approve: boolean, note = '') {
@@ -60,7 +61,7 @@ export async function rerenderVideo(v: Video, fresh: boolean) {
   let next: Video = { ...v, status: 'queued', blobId: undefined, thumbId: undefined, progress: undefined, error: undefined, decidedAt: undefined, createdAt: Date.now() };
   if (fresh) {
     const p = getOne('products', v.productId);
-    if (p) next = { ...newVideo(p, getSnapshot().settings, v.format), id: v.id };
+    if (p) next = { ...newVideo(p, getSnapshot().settings, v.format, { lang: v.lang }), id: v.id };
   }
   await put('videos', next);
   void pumpQueue();
@@ -92,7 +93,7 @@ export async function createPost(productId: string, platform: Platform, when: nu
   if (!p) return;
   const copy = buildCopy(p, getSnapshot().settings, platform, Math.floor(Math.random() * 1e9));
   const video = getSnapshot().data.videos.find((v) => v.productId === productId && v.status === 'approved' && v.format === (platform === 'youtube' ? 'wide' : 'reel'));
-  const post: Post = { id: uid(), productId, platform, title: copy.title, body: copy.body, hashtags: copy.hashtags, scheduledFor: when, status: 'pending', videoId: video?.id, createdAt: Date.now() };
+  const post: Post = { id: uid(), productId, platform, title: copy.title, body: copy.body, hashtags: copy.hashtags, scheduledFor: when, status: textStatus(), videoId: video?.id, createdAt: Date.now() };
   await put('posts', post);
 }
 export async function decidePost(id: string, approve: boolean) {
@@ -114,7 +115,7 @@ export async function draftMessage(leadId: string, reason: Message['reason']) {
   const l = getOne('leads', leadId);
   if (!l) return;
   const text = buildLeadMessage(l, getOne('products', l.productId), getSnapshot().settings, reason, Date.now());
-  await put('messages', { id: uid(), leadId, channel: l.phone.trim() ? 'whatsapp' : 'email', reason, subject: text.subject, body: text.body, status: 'pending', createdAt: Date.now() });
+  await put('messages', { id: uid(), leadId, channel: l.phone.trim() ? 'whatsapp' : 'email', reason, subject: text.subject, body: text.body, status: textStatus(), createdAt: Date.now() });
 }
 export async function decideMessage(id: string, approve: boolean) {
   const m = getOne('messages', id);

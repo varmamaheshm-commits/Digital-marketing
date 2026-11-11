@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client';
 import { App } from './ui/App';
 import { init } from './core/store';
 import './styles.css';
+// Bundled fonts so Hindi, Telugu and Tamil video text renders the same on every device.
+import '@fontsource/noto-sans-devanagari/devanagari-700.css';
+import '@fontsource/noto-sans-telugu/telugu-700.css';
+import '@fontsource/noto-sans-tamil/tamil-700.css';
 
 void init();
 createRoot(document.getElementById('root')!).render(

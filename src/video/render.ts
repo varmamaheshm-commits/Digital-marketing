@@ -97,6 +97,11 @@ export async function renderVideo(
   for (const b of imageBytes) {
     try { images.push(await loadImage(b)); } catch { /* skip unreadable photo */ }
   }
+  // Make sure the bundled script fonts are ready before the first frame is drawn.
+  const text = video.script.map((sc) => sc.text + (sc.sub ?? '')).join(' ');
+  await Promise.all(
+    ['Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil'].map((f) => document.fonts?.load(`700 40px "${f}"`, text).catch(() => [])),
+  );
   const comp = buildComp(video, images, settings);
   const fps = comp.fps;
   const total = Math.round(comp.duration * fps);

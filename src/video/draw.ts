@@ -22,9 +22,9 @@ interface StyleDef {
   spacing: number;
 }
 const STYLES: Record<VideoStyle, StyleDef> = {
-  bold: { font: '"Arial Black", "Segoe UI Black", "Roboto Black", "Helvetica Neue", Arial, sans-serif', weight: 900, upper: true, box: 'brand', dim: 0.3, spacing: 0 },
-  clean: { font: '"Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif', weight: 700, upper: false, box: 'white', dim: 0.22, spacing: 0 },
-  luxe: { font: 'Georgia, "Times New Roman", "Noto Serif", serif', weight: 600, upper: false, box: 'none', dim: 0.42, accent: '#d9b871', spacing: 0.02 },
+  bold: { font: '"Arial Black", "Segoe UI Black", "Roboto Black", "Helvetica Neue", Arial, "Noto Sans Devanagari", "Noto Sans Telugu", "Noto Sans Tamil", sans-serif', weight: 900, upper: true, box: 'brand', dim: 0.3, spacing: 0 },
+  clean: { font: '"Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Devanagari", "Noto Sans Telugu", "Noto Sans Tamil", sans-serif', weight: 700, upper: false, box: 'white', dim: 0.22, spacing: 0 },
+  luxe: { font: 'Georgia, "Times New Roman", "Noto Serif", "Noto Sans Devanagari", "Noto Sans Telugu", "Noto Sans Tamil", serif', weight: 600, upper: false, box: 'none', dim: 0.42, accent: '#d9b871', spacing: 0.02 },
 };
 interface CompScene extends ScriptScene {
   start: number;

@@ -66,9 +66,8 @@ const assert = (ok, msg) => { if (!ok) throw new Error('FAILED: ' + msg); consol
 
     // autopilot output
     await page.getByRole('button', { name: /Approvals/ }).click();
-    await page.getByTestId('approve-message').first().waitFor();
-    assert((await page.getByTestId('approve-post').count()) === 4, 'autopilot drafted 4 posts for approval');
-    assert((await page.getByTestId('approve-message').count()) === 1, 'autopilot drafted a welcome message for the lead');
+    await page.getByText('still being created').waitFor();
+    assert((await page.getByTestId('approve-post').count()) === 0 && (await page.getByTestId('approve-message').count()) === 0, 'only videos wait for approval (posts and messages are approved automatically)');
     console.log('  ..  waiting for videos to render');
     const t0 = Date.now();
     await page.waitForFunction(() => /Videos \(2\)/.test(document.body.innerText) && !/still being created/.test(document.body.innerText), null, { timeout: 600000 });
@@ -94,9 +93,33 @@ const assert = (ok, msg) => { if (!ok) throw new Error('FAILED: ' + msg); consol
       await page.getByRole('button', { name: 'Close' }).click();
     }
 
-    // approvals: text
-    await page.getByTestId('approve-message').click();
-    await page.getByTestId('approve-post').first().click();
+    // posts were drafted and approved automatically
+    await page.getByRole('button', { name: 'Content', exact: true }).click();
+    assert((await page.locator('.chip.approved').count()) === 4, 'autopilot drafted a week of 4 posts, already approved');
+
+    // knowledge base
+    await page.getByRole('button', { name: 'Knowledge', exact: true }).click();
+    await page.getByTestId('add-doc').click();
+    await page.getByTestId('doc-title').fill('Policies');
+    await page.getByTestId('doc-text').fill('Returns are accepted within 7 days if the seal is unopened.\n\nDelivery takes 3 to 5 working days across India.');
+    await page.getByTestId('save-doc').click();
+    await page.getByTestId('kb-question').fill('What is your return policy?');
+    assert(/within 7 days/.test(await page.getByTestId('kb-hit').first().innerText()), 'knowledge base answers a question from the owner\'s documents');
+    await page.screenshot({ path: path.join(OUT, '13-knowledge.png') });
+
+    // a Telugu video
+    await page.getByRole('button', { name: 'Videos', exact: true }).click();
+    await page.getByRole('button', { name: 'Create video' }).click();
+    await page.getByTestId('v-lang').selectOption('te');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await page.getByRole('button', { name: 'Review' }).waitFor({ timeout: 300000 });
+    await page.getByRole('button', { name: 'Review' }).click();
+    await page.getByTestId('approve-video').click();
+    const [te] = await Promise.all([page.waitForEvent('download'), page.getByTestId('download-video').click()]);
+    await te.saveAs(path.join(OUT, 'telugu.mp4'));
+    await page.getByRole('button', { name: 'Close' }).click();
+    console.log('  ok  Telugu video rendered');
+
     await page.getByRole('button', { name: 'Dashboard' }).click();
     await page.screenshot({ path: path.join(OUT, '4-dashboard.png'), fullPage: true });
     for (const [name, file] of [['Videos', '5-videos'], ['Content', '6-content'], ['Leads', '7-leads'], ['Campaigns', '8-campaigns'], ['Settings', '9-settings']]) {

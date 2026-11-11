@@ -32,7 +32,7 @@ export function Dashboard({ go }: { go: (p: Page) => void }) {
       <div className="head">
         <div className="grow">
           <h1>{settings.business.name ? `Hello, ${settings.business.name}` : 'Dashboard'}</h1>
-          <p>Autopilot prepares the work. Nothing goes out until you approve it.</p>
+          <p>Autopilot prepares the work in the background. {settings.approvals === 'all' ? 'Nothing goes out until you approve it.' : 'Every video waits for your approval.'}</p>
         </div>
         <label className="check">
           <input type="checkbox" checked={settings.autopilot.enabled} onChange={(e) => saveSettings({ ...settings, autopilot: { ...settings.autopilot, enabled: e.target.checked } })} />

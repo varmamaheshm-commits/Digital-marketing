@@ -1,5 +1,7 @@
 export type VideoFormat = 'reel' | 'square' | 'wide';
 export type VideoStyle = 'bold' | 'clean' | 'luxe';
+export type Lang = 'en' | 'hi' | 'te' | 'ta';
+export const LANG_NAMES: Record<Lang, string> = { en: 'English', hi: 'हिन्दी (Hindi)', te: 'తెలుగు (Telugu)', ta: 'தமிழ் (Tamil)' };
 export type MusicMood = 'upbeat' | 'chill' | 'cinematic' | 'none';
 /** Everything the app creates automatically waits in `pending` until the owner decides. */
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
@@ -31,6 +33,7 @@ export interface Video {
   id: string;
   productId: string;
   format: VideoFormat;
+  lang?: Lang;
   style: VideoStyle;
   mood: MusicMood;
   seed: number;
@@ -112,6 +115,14 @@ export interface Campaign {
   createdAt: number;
 }
 
+/** A document in the owner's private knowledge base (price lists, FAQs, policies …). */
+export interface KnowledgeDoc {
+  id: string;
+  title: string;
+  text: string;
+  createdAt: number;
+}
+
 export interface Activity {
   id: string;
   at: number;
@@ -125,7 +136,10 @@ export interface Settings {
   brand: { primary: string; accent: string; logoId?: string };
   tone: 'friendly' | 'professional' | 'energetic' | 'luxury';
   currency: string;
+  /** `videos`: only videos wait for the owner; posts and lead messages are approved automatically. */
+  approvals: 'videos' | 'all';
   autopilot: {
+    languages: Lang[];
     enabled: boolean;
     videoFormats: VideoFormat[];
     videoStyle: VideoStyle | 'auto';
@@ -145,10 +159,11 @@ export interface Collections {
   messages: Message;
   campaigns: Campaign;
   activity: Activity;
+  knowledge: KnowledgeDoc;
   settings: Settings;
 }
 export type Col = keyof Collections;
-export const COLS: Col[] = ['products', 'videos', 'posts', 'leads', 'messages', 'campaigns', 'activity', 'settings'];
+export const COLS: Col[] = ['products', 'videos', 'posts', 'leads', 'messages', 'campaigns', 'activity', 'knowledge', 'settings'];
 
 export const DEFAULT_SETTINGS: Settings = {
   id: 'main',
@@ -156,7 +171,9 @@ export const DEFAULT_SETTINGS: Settings = {
   brand: { primary: '#6d28d9', accent: '#f59e0b' },
   tone: 'friendly',
   currency: '₹',
+  approvals: 'videos',
   autopilot: {
+    languages: ['en'],
     enabled: true,
     videoFormats: ['reel', 'wide'],
     videoStyle: 'auto',

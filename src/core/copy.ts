@@ -2,7 +2,7 @@
  * Built-in copywriter. Template + seeded-variation based so it runs fully
  * offline with no outside AI service, and the same seed always gives the same text.
  */
-import type { Lead, Message, Platform, Product, ScriptScene, Settings } from './types';
+import type { Lang, Lead, Message, Platform, Product, ScriptScene, Settings } from './types';
 
 export function rng(seed: number) {
   let a = seed >>> 0 || 1;
@@ -40,32 +40,56 @@ const OPENERS: Record<Tone, string[]> = {
   luxury: ['Some things are simply made better.', 'For those who appreciate the finer details.', 'Refined. Timeless. Yours.'],
 };
 
+/** Fixed video phrases for other languages. The product's own text is used exactly as the owner typed it. */
+const PHRASES: Record<Exclude<Lang, 'en'>, { hooks: string[]; ctas: string[]; forWhom: string; bestPrice: string; limited: string; generic: string[] }> = {
+  hi: {
+    hooks: ['पेश है {name}', 'यह आपको ज़रूर पसंद आएगा', '{name} अब उपलब्ध है'],
+    ctas: ['आज ही ऑर्डर करें', 'अभी खरीदें', 'ऑर्डर के लिए मैसेज करें'],
+    forWhom: '{audience} के लिए', bestPrice: 'आज की सबसे अच्छी कीमत', limited: 'सीमित समय के लिए',
+    generic: ['भरोसेमंद गुणवत्ता', 'लंबे समय तक चलने वाला', 'ग्राहकों की पसंद', 'पैसे की पूरी कीमत'],
+  },
+  te: {
+    hooks: ['{name} ను పరిచయం చేస్తున్నాం', 'ఇది మీకు తప్పకుండా నచ్చుతుంది', '{name} ఇప్పుడు అందుబాటులో ఉంది'],
+    ctas: ['ఈరోజే ఆర్డర్ చేయండి', 'ఇప్పుడే కొనండి', 'ఆర్డర్ కోసం మెసేజ్ చేయండి'],
+    forWhom: '{audience} కోసం', bestPrice: 'ఈరోజు ఉత్తమ ధర', limited: 'పరిమిత కాలం మాత్రమే',
+    generic: ['నమ్మకమైన నాణ్యత', 'ఎక్కువ కాలం మన్నిక', 'కస్టమర్ల అభిమానం', 'డబ్బుకు తగిన విలువ'],
+  },
+  ta: {
+    hooks: ['{name} அறிமுகம்', 'இது உங்களுக்கு நிச்சயம் பிடிக்கும்', '{name} இப்போது கிடைக்கிறது'],
+    ctas: ['இன்றே ஆர்டர் செய்யுங்கள்', 'இப்போதே வாங்குங்கள்', 'ஆர்டருக்கு மெசேஜ் செய்யுங்கள்'],
+    forWhom: '{audience} அனைவருக்கும்', bestPrice: 'இன்றைய சிறந்த விலை', limited: 'குறுகிய காலம் மட்டுமே',
+    generic: ['நம்பகமான தரம்', 'நீண்ட காலம் உழைக்கும்', 'வாடிக்கையாளர்களின் விருப்பம்', 'பணத்திற்கு ஏற்ற மதிப்பு'],
+  },
+};
+
 export function formatPrice(p: Product, s: Settings): string {
   const price = p.price.trim();
   if (!price) return '';
   return /^[\d.,\s]+$/.test(price) ? `${s.currency}${price}` : price;
 }
 
-export function productFeatures(p: Product): string[] {
+export function productFeatures(p: Product, lang: Lang = 'en'): string[] {
   const own = p.features.map((f) => f.trim()).filter(Boolean);
   if (own.length) return own;
   const fromDesc = p.description
     .split(/[.!?\n]+/)
     .map((x) => x.trim())
     .filter((x) => x.length > 8 && x.length < 60);
+  if (lang !== 'en') return PHRASES[lang].generic;
   return fromDesc.length ? fromDesc : GENERIC_FEATURES;
 }
 
 const firstSentence = (text: string) => (text.split(/[.!?\n]/)[0] ?? '').trim();
 
-export function buildScript(p: Product, s: Settings, seed: number): ScriptScene[] {
+export function buildScript(p: Product, s: Settings, seed: number, lang: Lang = 'en'): ScriptScene[] {
   const r = rng(seed);
+  const ph = lang === 'en' ? null : PHRASES[lang];
   const vars = { name: p.name, category: p.category || 'product', business: s.business.name };
   const scenes: ScriptScene[] = [];
   scenes.push({
     kind: 'hook',
-    text: fill(pick(r, HOOKS[s.tone]), vars),
-    sub: p.audience ? `For ${p.audience}` : undefined,
+    text: fill(pick(r, ph ? ph.hooks : HOOKS[s.tone]), vars),
+    sub: p.audience ? (ph ? fill(ph.forWhom, { audience: p.audience }) : `For ${p.audience}`) : undefined,
     seconds: 2.6,
   });
   scenes.push({
@@ -74,7 +98,7 @@ export function buildScript(p: Product, s: Settings, seed: number): ScriptScene[
     sub: clip(firstSentence(p.description) || s.business.tagline || cap(vars.category), 70),
     seconds: 3,
   });
-  const feats = productFeatures(p);
+  const feats = productFeatures(p, lang);
   const start = Math.floor(r() * feats.length);
   for (let i = 0; i < Math.min(3, feats.length); i++) {
     scenes.push({ kind: 'feature', text: clip(cap(feats[(start + i) % feats.length]), 60), seconds: 2.6 });
@@ -84,13 +108,13 @@ export function buildScript(p: Product, s: Settings, seed: number): ScriptScene[
     scenes.push({
       kind: 'offer',
       text: price || p.offer,
-      sub: price ? p.offer || 'Best price today' : 'Limited time',
+      sub: price ? p.offer || (ph ? ph.bestPrice : 'Best price today') : ph ? ph.limited : 'Limited time',
       seconds: 2.8,
     });
   }
   scenes.push({
     kind: 'cta',
-    text: pick(r, CTAS[s.tone]),
+    text: pick(r, ph ? ph.ctas : CTAS[s.tone]),
     sub: [s.business.name, s.business.phone || s.business.website].filter(Boolean).join('  ·  ') || undefined,
     seconds: 3.2,
   });

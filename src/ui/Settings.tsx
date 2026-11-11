@@ -2,8 +2,8 @@ import { useState } from 'react';
 import { passwordStrength } from '../core/crypto';
 import { saveFile } from '../core/files';
 import { exportBackup, importBackup, lock, saveSettings, updatePassword, useStore, wipeEverything } from '../core/store';
-import type { Settings, VideoFormat } from '../core/types';
-import { FORMAT_INFO } from '../core/types';
+import type { Lang, Settings, VideoFormat } from '../core/types';
+import { FORMAT_INFO, LANG_NAMES } from '../core/types';
 import { Field, fmtDateTime, Icon, toast } from './common';
 import { Strength } from './Gate';
 
@@ -65,7 +65,20 @@ export function SettingsPage() {
         <div className="card stack">
           <h2>Autopilot</h2>
           <label className="check"><input type="checkbox" checked={s.autopilot.enabled} onChange={(e) => auto({ enabled: e.target.checked })} /> Prepare videos, posts and follow-ups automatically</label>
-          <div className="notice">Autopilot only prepares drafts. Nothing is saved out, shared or sent without your approval.</div>
+          <Field label="What needs your approval">
+            <select data-testid="approvals-mode" value={s.approvals} onChange={(e) => save({ approvals: e.target.value as Settings['approvals'] })}>
+              <option value="videos">Videos only — posts and lead messages are approved automatically</option>
+              <option value="all">Everything — videos, posts and lead messages</option>
+            </select>
+          </Field>
+          <b style={{ fontSize: '.86rem' }}>Video languages</b>
+          <div className="row">
+            {(Object.keys(LANG_NAMES) as Lang[]).map((l) => (
+              <label className="check" key={l}>
+                <input type="checkbox" checked={s.autopilot.languages.includes(l)} onChange={(e) => auto({ languages: e.target.checked ? [...s.autopilot.languages, l] : s.autopilot.languages.filter((x) => x !== l) })} /> {LANG_NAMES[l]}
+              </label>
+            ))}
+          </div>
           <b style={{ fontSize: '.86rem' }}>Video shapes to create for each product</b>
           {(Object.keys(FORMAT_INFO) as VideoFormat[]).map((f) => (
             <label className="check" key={f}>

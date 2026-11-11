@@ -15,11 +15,17 @@ and no outside service: the app makes **zero** network connections.
 | **Videos** | A script is written and a full-HD video is rendered with motion, animated titles, price badge, call-to-action and generated music — vertical 9:16 (Reels / Shorts), square 1:1 and widescreen 16:9 (YouTube) | Approve, reject, edit the script, or ask for a new version |
 | **Content** | A week of posts is drafted and scheduled: Instagram, Facebook, YouTube, WhatsApp broadcast, email and ad copy, with hashtags | Approve / edit / reject each draft |
 | **Leads** | Leads are scored, and welcome / follow-up / offer messages are drafted | Approve each message, then send it from your own WhatsApp, SMS or email |
+| **Knowledge base** | Your price lists, FAQs and policies are indexed on the device; a customer question is matched to the right passages and a reply is drafted from them | What to add; edit the reply before sending |
 | **Campaigns** | Click rate, cost per lead and return on spend are calculated | Budgets and recorded results |
 | **Autopilot** | Re-checks every 10 minutes and tops up whatever is missing | On / off, how often, which video shapes |
 
-**The approval rule:** everything the app creates starts as *needs approval*. The Save,
-Share, Copy and Send buttons only appear after you approve the item.
+**The approval rule:** every video waits as *needs approval*; Save and Share only appear after
+you approve it. Posts and lead messages are approved automatically by default — switch
+*Settings → Autopilot → What needs your approval* to *Everything* to review those too.
+
+**Languages:** videos can be made in English, Hindi, Telugu and Tamil (fonts are bundled). The
+fixed phrases (opening line, call-to-action, offer labels) are translated; the product name,
+description and selling points appear exactly as you typed them.
 
 ## Install
 

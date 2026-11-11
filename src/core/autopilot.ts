@@ -6,7 +6,7 @@
 import { buildCopy, buildLeadMessage, buildScript, rng } from './copy';
 import { scoreLead } from './leads';
 import type { Data } from './store';
-import { uid, type Message, type MusicMood, type Platform, type Post, type Product, type Settings, type Video, type VideoFormat, type VideoStyle } from './types';
+import { uid, type Lang, type Message, type MusicMood, type Platform, type Post, type Product, type Settings, type Video, type VideoFormat, type VideoStyle } from './types';
 
 const DAY = 86_400_000;
 const STYLES: VideoStyle[] = ['bold', 'clean', 'luxe'];
@@ -14,15 +14,16 @@ const MOOD_FOR: Record<VideoStyle, MusicMood> = { bold: 'upbeat', clean: 'chill'
 const POST_PLATFORMS: Platform[] = ['instagram', 'facebook', 'youtube', 'whatsapp', 'email', 'ad'];
 const POST_HOURS = [10, 13, 18, 20];
 
-export function newVideo(p: Product, s: Settings, format: VideoFormat, opts: { style?: VideoStyle; mood?: MusicMood; seed?: number } = {}): Video {
+export function newVideo(p: Product, s: Settings, format: VideoFormat, opts: { style?: VideoStyle; mood?: MusicMood; seed?: number; lang?: Lang } = {}): Video {
+  const lang = opts.lang ?? 'en';
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const r = rng(seed);
   const style = opts.style ?? (s.autopilot.videoStyle === 'auto' ? (s.tone === 'luxury' ? 'luxe' : STYLES[Math.floor(r() * 3)]) : s.autopilot.videoStyle);
   const mood = opts.mood ?? (s.autopilot.mood === 'auto' ? MOOD_FOR[style] : s.autopilot.mood);
   const copy = buildCopy(p, s, format === 'wide' ? 'youtube' : 'instagram', seed);
   return {
-    id: uid(), productId: p.id, format, style, mood, seed,
-    script: buildScript(p, s, seed),
+    id: uid(), productId: p.id, format, lang, style, mood, seed,
+    script: buildScript(p, s, seed, lang),
     title: format === 'wide' ? copy.title : p.name,
     caption: copy.body, hashtags: copy.hashtags,
     status: 'queued', createdAt: Date.now(),
@@ -38,6 +39,8 @@ export interface Plan {
 
 export function planAutopilot(data: Data, s: Settings, now = Date.now()): Plan {
   const plan: Plan = { videos: [], posts: [], messages: [], scores: [] };
+  // Videos always wait for the owner. Text drafts wait only when the owner asked to approve everything.
+  const textStatus = s.approvals === 'all' ? 'pending' : 'approved';
   for (const l of data.leads) {
     const score = scoreLead(l, now);
     if (score !== l.score) plan.scores.push({ id: l.id, score });
@@ -48,10 +51,12 @@ export function planAutopilot(data: Data, s: Settings, now = Date.now()): Plan {
   // 1. Videos: one fresh video per active product and format.
   for (const p of products) {
     for (const format of s.autopilot.videoFormats) {
-      const mine = data.videos.filter((v) => v.productId === p.id && v.format === format && v.status !== 'failed');
-      const inFlight = mine.some((v) => v.status === 'queued' || v.status === 'rendering' || v.status === 'pending');
-      const recent = mine.some((v) => now - v.createdAt < s.autopilot.videoRefreshDays * DAY);
-      if (!inFlight && !recent) plan.videos.push(newVideo(p, s, format));
+      for (const lang of s.autopilot.languages.length ? s.autopilot.languages : (['en'] as Lang[])) {
+        const mine = data.videos.filter((v) => v.productId === p.id && v.format === format && (v.lang ?? 'en') === lang && v.status !== 'failed');
+        const inFlight = mine.some((v) => v.status === 'queued' || v.status === 'rendering' || v.status === 'pending');
+        const recent = mine.some((v) => now - v.createdAt < s.autopilot.videoRefreshDays * DAY);
+        if (!inFlight && !recent) plan.videos.push(newVideo(p, s, format, { lang }));
+      }
     }
   }
 
@@ -71,7 +76,7 @@ export function planAutopilot(data: Data, s: Settings, now = Date.now()): Plan {
       const video = data.videos.find((v) => v.productId === p.id && v.status === 'approved' && v.format === wanted);
       plan.posts.push({
         id: uid(), productId: p.id, platform, title: copy.title, body: copy.body, hashtags: copy.hashtags,
-        scheduledFor: when.getTime(), status: 'pending', videoId: video?.id, createdAt: now,
+        scheduledFor: when.getTime(), status: textStatus, videoId: video?.id, createdAt: now,
       });
     }
   }
@@ -91,7 +96,7 @@ export function planAutopilot(data: Data, s: Settings, now = Date.now()): Plan {
     }
     if (!reason) continue;
     const text = buildLeadMessage(l, product, s, reason, l.createdAt + mine.length);
-    plan.messages.push({ id: uid(), leadId: l.id, channel, reason, subject: text.subject, body: text.body, status: 'pending', createdAt: now });
+    plan.messages.push({ id: uid(), leadId: l.id, channel, reason, subject: text.subject, body: text.body, status: textStatus, createdAt: now });
   }
   return plan;
 }

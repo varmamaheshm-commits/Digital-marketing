@@ -8,12 +8,13 @@ import { Icon, ToastHost } from './common';
 import { Content } from './Content';
 import { Dashboard } from './Dashboard';
 import { Lock, Setup } from './Gate';
+import { Knowledge } from './Knowledge';
 import { Leads } from './Leads';
 import { Products } from './Products';
 import { SettingsPage } from './Settings';
 import { Videos } from './Videos';
 
-export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'content' | 'leads' | 'campaigns' | 'settings';
+export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'content' | 'leads' | 'knowledge' | 'campaigns' | 'settings';
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'home', label: 'Dashboard', icon: 'home' },
   { id: 'approvals', label: 'Approvals', icon: 'check' },
@@ -21,6 +22,7 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'videos', label: 'Videos', icon: 'video' },
   { id: 'content', label: 'Content', icon: 'calendar' },
   { id: 'leads', label: 'Leads', icon: 'users' },
+  { id: 'knowledge', label: 'Knowledge', icon: 'book' },
   { id: 'campaigns', label: 'Campaigns', icon: 'target' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -101,6 +103,7 @@ export function App() {
           {page === 'videos' && <Videos />}
           {page === 'content' && <Content />}
           {page === 'leads' && <Leads />}
+          {page === 'knowledge' && <Knowledge />}
           {page === 'campaigns' && <Campaigns />}
           {page === 'settings' && <SettingsPage />}
         </div>

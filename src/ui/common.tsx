@@ -19,6 +19,7 @@ const PATHS: Record<string, string> = {
   copy: 'M9 9h11v11H9zM5 15H4V4h11v1',
   trash: 'M4 7h16M9 7V4h6v3M6 7l1 14h10l1-14',
   refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',
+  book: 'M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-3a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h4z',
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
 };
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {

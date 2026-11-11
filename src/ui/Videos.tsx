@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { createVideo, decideVideo, deleteVideo, rerenderVideo } from '../core/actions';
 import { canShareFiles, copyText, saveFile, shareFile } from '../core/files';
 import { getBlob, patch, useStore } from '../core/store';
-import { FORMAT_INFO, type MusicMood, type Video, type VideoFormat, type VideoStyle } from '../core/types';
+import { FORMAT_INFO, LANG_NAMES, type Lang, type MusicMood, type Video, type VideoFormat, type VideoStyle } from '../core/types';
 import { canRenderVideo } from '../video/render';
 import { Chip, Empty, Field, fmtDateTime, fmtSize, Icon, Modal, Picture, toast, useBlobUrl } from './common';
 
@@ -15,7 +15,7 @@ export function VideoCard({ v, onOpen }: { v: Video; onOpen: () => void }) {
         <Picture id={v.thumbId} alt="" contain />
       </button>
       <div className="row between"><b>{product?.name ?? 'Deleted product'}</b><Chip status={v.status} /></div>
-      <small>{FORMAT_INFO[v.format].label} · {v.style} · {fmtDateTime(v.createdAt)}</small>
+      <small>{FORMAT_INFO[v.format].label} · {LANG_NAMES[v.lang ?? 'en']} · {v.style} · {fmtDateTime(v.createdAt)}</small>
       {(v.status === 'rendering' || v.status === 'queued') && (
         <div className="bar"><i style={{ width: `${Math.round((v.progress ?? 0) * 100)}%` }} /></div>
       )}
@@ -148,15 +148,19 @@ function CreateVideo({ onClose }: { onClose: () => void }) {
   const [format, setFormat] = useState<VideoFormat>('reel');
   const [style, setStyle] = useState<VideoStyle | ''>('');
   const [mood, setMood] = useState<MusicMood | ''>('');
+  const [lang, setLang] = useState<Lang>('en');
   return (
     <Modal title="Create a video" onClose={onClose}
-      footer={<button className="btn primary" onClick={async () => { await createVideo(productId, format, style || undefined, mood || undefined); onClose(); toast('Video is being created'); }}>Create</button>}>
+      footer={<button className="btn primary" onClick={async () => { await createVideo(productId, format, style || undefined, mood || undefined, lang); onClose(); toast('Video is being created'); }}>Create</button>}>
       <div className="form">
         <Field label="Product"><select value={productId} onChange={(e) => setProductId(e.target.value)}>{data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
         <Field label="Shape" hint={FORMAT_INFO[format].use}>
           <select value={format} onChange={(e) => setFormat(e.target.value as VideoFormat)}>
             {(Object.keys(FORMAT_INFO) as VideoFormat[]).map((f) => <option key={f} value={f}>{FORMAT_INFO[f].label} ({FORMAT_INFO[f].w}×{FORMAT_INFO[f].h})</option>)}
           </select>
+        </Field>
+        <Field label="Language" hint="Fixed phrases are translated; your product text is used as you typed it.">
+          <select data-testid="v-lang" value={lang} onChange={(e) => setLang(e.target.value as Lang)}>{(Object.keys(LANG_NAMES) as Lang[]).map((l) => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}</select>
         </Field>
         <Field label="Look">
           <select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)}>
