@@ -1,0 +1,140 @@
+name: Build installers
+
+# Produces the setup files:
+#   Windows  -> Marketing-Studio-Setup-<version>-win-x64.exe
+#   Linux    -> Marketing-Studio-Setup-<version>-linux-x86_64.AppImage
+#   Android  -> Marketing-Studio-<version>-android.apk   (phones and tablets)
+#   macOS    -> Marketing-Studio-Setup-<version>-mac-*.dmg (tags / manual runs only)
+# Download them from the run's "Artifacts" section, or from the Release when a v* tag is pushed.
+
+on:
+  push:
+    branches: [main, 'claude/**']
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+        env: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' }
+      - run: npm test
+      - run: npm run build
+
+  desktop:
+    needs: test
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, script: 'dist:win', name: windows }
+          - { os: ubuntu-latest, script: 'dist:linux', name: linux }
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run ${{ matrix.script }}
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marketing-studio-${{ matrix.name }}
+          path: |
+            release/*.exe
+            release/*.AppImage
+          if-no-files-found: error
+
+  mac:
+    needs: test
+    if: startsWith(github.ref, 'refs/tags/v') || github.event_name == 'workflow_dispatch'
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - run: npm ci
+      - run: npm run dist:mac
+        env: { CSC_IDENTITY_AUTO_DISCOVERY: 'false' }
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marketing-studio-mac
+          path: release/*.dmg
+          if-no-files-found: error
+
+  android:
+    needs: test
+    runs-on: ubuntu-latest
+    env:
+      HAS_KEYSTORE: ${{ secrets.ANDROID_KEYSTORE_BASE64 != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm }
+      - uses: actions/setup-java@v4
+        with: { distribution: temurin, java-version: 21 }
+      - run: npm ci
+        env: { ELECTRON_SKIP_BINARY_DOWNLOAD: '1' }
+      - run: npm run build
+      - name: Create Android project
+        run: |
+          npx cap add android
+          npx cap sync android
+          # App data is already encrypted; also keep it out of cloud/device backups.
+          sed -i 's/android:allowBackup="true"/android:allowBackup="false"/' android/app/src/main/AndroidManifest.xml
+          VERSION=$(node -p "require('./package.json').version")
+          sed -i "s/versionName \"1.0\"/versionName \"$VERSION\"/; s/versionCode 1$/versionCode ${{ github.run_number }}/" android/app/build.gradle
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: App icon
+        continue-on-error: true
+        run: |
+          mkdir -p assets && cp build/icon.png assets/logo.png
+          npx --yes @capacitor/assets generate --android --iconBackgroundColor '#7c3aed' --iconBackgroundColorDark '#7c3aed'
+      - name: Build APK (debug-signed)
+        if: env.HAS_KEYSTORE != 'true'
+        run: |
+          cd android && ./gradlew --no-daemon assembleDebug
+          cp app/build/outputs/apk/debug/app-debug.apk "../Marketing-Studio-$VERSION-android.apk"
+      - name: Build APK (signed with your own key)
+        if: env.HAS_KEYSTORE == 'true'
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          KS_PASS: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+        run: |
+          echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/release.jks"
+          cd android && ./gradlew --no-daemon assembleRelease
+          BT=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+          "$BT/zipalign" -f 4 app/build/outputs/apk/release/app-release-unsigned.apk "$RUNNER_TEMP/aligned.apk"
+          "$BT/apksigner" sign --ks "$RUNNER_TEMP/release.jks" --ks-pass env:KS_PASS --ks-key-alias "$KEY_ALIAS" --out "../Marketing-Studio-$VERSION-android.apk" "$RUNNER_TEMP/aligned.apk"
+          rm -f "$RUNNER_TEMP/release.jks"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: marketing-studio-android
+          path: Marketing-Studio-*-android.apk
+          if-no-files-found: error
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [desktop, mac, android]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with: { path: out, merge-multiple: true }
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: out/*
+          generate_release_notes: true

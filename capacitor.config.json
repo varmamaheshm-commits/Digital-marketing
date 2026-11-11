@@ -1,0 +1,6 @@
+{
+  "appId": "com.marketingstudio.app",
+  "appName": "Marketing Studio",
+  "webDir": "dist",
+  "android": { "allowMixedContent": false, "webContentsDebuggingEnabled": false }
+}
