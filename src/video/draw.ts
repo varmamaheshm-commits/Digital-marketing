@@ -348,10 +348,11 @@ function foreground(ctx: Ctx, c: Comp, sc: CompScene, lt: number, last: boolean)
   } else if (sc.kind === 'feature') {
     const r = cardRect(c);
     const wide = w > h;
-    const ax = wide ? r.x + r.w + w * 0.05 : w * 0.08;
-    const aw = wide ? w - ax - w * 0.05 : w * 0.84;
-    const ay = wide ? h * 0.3 : r.y + r.h + h * 0.05;
-    const ah = wide ? h * 0.45 : h - ay - h * 0.1;
+    const bare = sc.img < 0; // no photo: use the whole frame for the text
+    const ax = bare ? w * 0.1 : wide ? r.x + r.w + w * 0.05 : w * 0.08;
+    const aw = bare ? w * 0.8 : wide ? w - ax - w * 0.05 : w * 0.84;
+    const ay = bare ? h * 0.3 : wide ? h * 0.3 : r.y + r.h + h * 0.05;
+    const ah = bare ? h * 0.45 : wide ? h * 0.45 : h - ay - h * 0.1;
     const k = outBack((lt - d) / 0.45);
     // numbered badge
     const br = m * 0.05;
@@ -368,7 +369,7 @@ function foreground(ctx: Ctx, c: Comp, sc: CompScene, lt: number, last: boolean)
       ctx.fillText(String(sc.n), 0, br * 0.06);
       ctx.restore();
     }
-    const f = fit(ctx, c, say(c, sc.text), aw, ah - br * 2.6, m * 0.085);
+    const f = fit(ctx, c, say(c, sc.text), aw, ah - br * 2.6, m * (bare ? 0.11 : 0.085));
     words(ctx, c, f, ax, ay + br * 2.6, lt, { align: 'left', delay: d + 0.15, alpha: out });
   } else if (sc.kind === 'offer') {
     const k = outBack((lt - d) / 0.55);
