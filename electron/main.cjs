@@ -4,8 +4,9 @@
  * app:// origin, cannot navigate away, cannot open windows, and every network
  * request that is not part of the app itself is cancelled.
  */
-const { app, BrowserWindow, protocol, session, shell, Menu, net } = require('electron');
+const { app, BrowserWindow, protocol, session, shell, Menu, net, Tray, ipcMain, nativeImage } = require('electron');
 const path = require('path');
+const fs = require('fs');
 const { pathToFileURL } = require('url');
 
 const DIST = path.join(__dirname, '..', 'dist');
@@ -18,6 +19,40 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 if (!app.requestSingleInstanceLock()) app.quit();
+
+// ---- background mode: keep the agents working after the window is closed ----
+const CONFIG = () => path.join(app.getPath('userData'), 'desktop.json');
+let background = false;
+let quitting = false;
+let tray = null;
+let mainWindow = null;
+
+function loadConfig() {
+  try { background = JSON.parse(fs.readFileSync(CONFIG(), 'utf8')).background === true; } catch { background = false; }
+}
+function showWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) return createWindow();
+  mainWindow.show();
+  mainWindow.focus();
+}
+function applyBackground() {
+  // Start with the computer so the agents resume after a restart (the owner still unlocks once).
+  try { if (app.isPackaged) app.setLoginItemSettings({ openAtLogin: background }); } catch { /* not supported on this system */ }
+  if (background && !tray) {
+    try {
+      tray = new Tray(nativeImage.createFromPath(path.join(DIST, 'icons', 'icon-192.png')).resize({ width: 20, height: 20 }));
+      tray.setToolTip('Marketing Studio — working in the background');
+      tray.setContextMenu(Menu.buildFromTemplate([
+        { label: 'Open Marketing Studio', click: showWindow },
+        { label: 'Quit (stops background work)', click: () => { quitting = true; app.quit(); } },
+      ]));
+      tray.on('click', showWindow);
+    } catch { tray = null; }
+  } else if (!background && tray) {
+    tray.destroy();
+    tray = null;
+  }
+}
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -34,7 +69,14 @@ function createWindow() {
       webSecurity: true,
       devTools: !app.isPackaged,
       spellcheck: false,
+      backgroundThrottling: false, // keep creating videos at full speed while hidden
+      preload: path.join(__dirname, 'preload.cjs'),
     },
+  });
+  mainWindow = win;
+  win.on('close', (e) => {
+    // With background mode on, closing the window only hides it; the tray icon brings it back.
+    if (background && tray && !quitting) { e.preventDefault(); win.hide(); }
   });
   win.webContents.setWindowOpenHandler(({ url }) => {
     if (EXTERNAL.test(url)) shell.openExternal(url);
@@ -51,6 +93,17 @@ function createWindow() {
 
 app.whenReady().then(() => {
   Menu.setApplicationMenu(null);
+  loadConfig();
+  applyBackground();
+  const fromApp = (e) => !!e.senderFrame && e.senderFrame.url.startsWith(ORIGIN + '/');
+  ipcMain.handle('background:get', (e) => (fromApp(e) ? { enabled: background, tray: !!tray } : null));
+  ipcMain.handle('background:set', (e, on) => {
+    if (!fromApp(e)) return null;
+    background = on === true;
+    try { fs.writeFileSync(CONFIG(), JSON.stringify({ background })); } catch { /* keep in memory */ }
+    applyBackground();
+    return { enabled: background, tray: !!tray };
+  });
 
   // Serve the bundled app files; refuse anything outside the app folder.
   protocol.handle('app', (request) => {
@@ -63,9 +116,9 @@ app.whenReady().then(() => {
   });
 
   const ses = session.defaultSession;
-  // No outside connections at all.
+  // No outside connections. The single exception is the owner's own AI engine on this same computer.
   ses.webRequest.onBeforeRequest((details, cb) => {
-    const ok = /^(app|blob|data|devtools|file):/i.test(details.url);
+    const ok = /^(app|blob|data|devtools|file):/i.test(details.url) || /^http:\/\/(127\.0\.0\.1|localhost):11434\//i.test(details.url);
     cb({ cancel: !ok });
   });
   // No camera, microphone, location, notifications … unless the app needs them (it does not).
@@ -78,6 +131,7 @@ app.whenReady().then(() => {
 
 app.on('second-instance', () => {
   const [win] = BrowserWindow.getAllWindows();
-  if (win) { if (win.isMinimized()) win.restore(); win.focus(); }
+  if (win) { if (win.isMinimized()) win.restore(); win.show(); win.focus(); }
 });
+app.on('before-quit', () => { quitting = true; });
 app.on('window-all-closed', () => process.platform !== 'darwin' && app.quit());

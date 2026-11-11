@@ -34,6 +34,8 @@ export interface Video {
   productId: string;
   format: VideoFormat;
   lang?: Lang;
+  /** True once the script-writer agent has rewritten the script. */
+  aiScript?: boolean;
   style: VideoStyle;
   mood: MusicMood;
   seed: number;
@@ -148,7 +150,9 @@ export interface Settings {
     postsPerWeek: number;
     followUpDays: number;
   };
-  security: { autoLockMinutes: number };
+  security: { autoLockMinutes: number; keepWorking: boolean };
+  /** AI agents, powered by a language model running on the owner's own PC. */
+  ai: { enabled: boolean; model: string; agents: { scripts: boolean; posts: boolean; leads: boolean; answers: boolean } };
 }
 
 export interface Collections {
@@ -182,7 +186,8 @@ export const DEFAULT_SETTINGS: Settings = {
     postsPerWeek: 4,
     followUpDays: 3,
   },
-  security: { autoLockMinutes: 10 },
+  security: { autoLockMinutes: 10, keepWorking: false },
+  ai: { enabled: false, model: '', agents: { scripts: true, posts: true, leads: true, answers: true } },
 };
 
 export const FORMAT_INFO: Record<VideoFormat, { label: string; w: number; h: number; use: string }> = {

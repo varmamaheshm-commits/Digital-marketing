@@ -1,5 +1,7 @@
 /** Owner- and autopilot-level operations built on the encrypted store. */
 import { cancelRender, pumpQueue } from '../video/queue';
+import { aiCopy, aiLeadMessage } from './agents';
+import { aiModels } from './ai';
 import { newVideo, planAutopilot } from './autopilot';
 import { buildCopy, buildLeadMessage } from './copy';
 import { scoreLead } from './leads';
@@ -17,8 +19,23 @@ export async function runAutopilot(): Promise<{ videos: number; posts: number; m
     const plan = planAutopilot(snap.data, snap.settings);
     for (const s of plan.scores) await patch('leads', s.id, { score: s.score });
     for (const v of plan.videos) await put('videos', v);
-    for (const p of plan.posts) await put('posts', p);
-    for (const m of plan.messages) await put('messages', m);
+    // Hand the drafts to the AI agents when the owner's AI engine is running; otherwise keep the template text.
+    const model = plan.posts.length + plan.messages.length > 0 ? await agentModel() : null;
+    for (const p of plan.posts) {
+      const product = getOne('products', p.productId);
+      if (model && snap.settings.ai.agents.posts && product) {
+        try { Object.assign(p, await aiCopy(model, product, snap.settings, p.platform, p, snap.data.knowledge)); } catch { /* keep template */ }
+      }
+      await put('posts', p);
+    }
+    for (const m of plan.messages) {
+      const lead = getOne('leads', m.leadId);
+      if (model && snap.settings.ai.agents.leads && lead) {
+        try { Object.assign(m, await aiLeadMessage(model, lead, getOne('products', lead.productId), snap.settings, m.reason, m, snap.data.knowledge)); } catch { /* keep template */ }
+      }
+      await put('messages', m);
+    }
+    if (model && plan.posts.length + plan.messages.length > 0) await log('auto', `AI agents wrote ${plan.posts.length} post(s) and ${plan.messages.length} lead message(s) using ${model}.`);
     const made = { videos: plan.videos.length, posts: plan.posts.length, messages: plan.messages.length };
     if (made.videos + made.posts + made.messages > 0) {
       await log('auto', `Autopilot prepared ${made.videos} video(s) for your approval, plus ${made.posts} post(s) and ${made.messages} lead message(s).`);
@@ -28,6 +45,15 @@ export async function runAutopilot(): Promise<{ videos: number; posts: number; m
   } finally {
     busy = false;
   }
+}
+
+/** The model the agents should use, or null when AI is switched off or the engine is not running. */
+export async function agentModel(): Promise<string | null> {
+  const ai = getSnapshot().settings.ai;
+  if (!ai.enabled) return null;
+  const models = await aiModels();
+  if (!models?.length) return null;
+  return models.includes(ai.model) ? ai.model : models[0];
 }
 
 export function pendingCounts() {

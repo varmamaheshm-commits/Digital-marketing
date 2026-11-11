@@ -102,11 +102,11 @@ export function SettingsPage() {
           <h2><Icon name="shield" /> Security</h2>
           <div className="notice ok">All data is encrypted on this device (AES-256). The app makes no connections to any outside server.</div>
           <Field label="Lock automatically after (minutes without use)">
-            <select value={s.security.autoLockMinutes} onChange={(e) => save({ security: { autoLockMinutes: Number(e.target.value) } })}>
+            <select value={s.security.autoLockMinutes} onChange={(e) => save({ security: { ...s.security, autoLockMinutes: Number(e.target.value) } })}>
               {[2, 5, 10, 30, 60].map((m) => <option key={m} value={m}>{m}</option>)}
             </select>
           </Field>
-          <button className="btn" onClick={() => lock()}><Icon name="lock" /> Lock now</button>
+          <button className="btn" onClick={() => lock()}><Icon name="lock" /> Lock fully now{s.security.keepWorking ? ' (pauses background work)' : ''}</button>
           <h3 style={{ marginTop: 8 }}>Change master password</h3>
           <input type="password" placeholder="Current password" value={cur} onChange={(e) => setCur(e.target.value)} autoComplete="current-password" aria-label="Current password" />
           <input type="password" placeholder="New password" value={next} onChange={(e) => setNext(e.target.value)} autoComplete="new-password" aria-label="New password" />

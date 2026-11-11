@@ -13,7 +13,27 @@ const PHOTOS = fs.existsSync(path.join(OUT, 'photos')) ? fs.readdirSync(path.joi
 const PW = 'blue-Tiger-2026!';
 const assert = (ok, msg) => { if (!ok) throw new Error('FAILED: ' + msg); console.log('  ok  ' + msg); };
 
+// Stand-in for the owner's local AI engine (Ollama-compatible) so the agents can be exercised.
+const aiCalls = [];
+const mockAi = require('http').createServer((req, res) => {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Headers', '*');
+  if (req.method === 'OPTIONS') return res.end();
+  if (req.url === '/api/tags') return res.end(JSON.stringify({ models: [{ name: 'local-model' }] }));
+  let body = '';
+  req.on('data', (d) => (body += d));
+  req.on('end', () => {
+    const prompt = JSON.parse(body).messages[1].content;
+    aiCalls.push(prompt);
+    const reply = prompt.includes('"hook"') ? { hook: 'Glow like never before', tagline: 'Brighter skin in two weeks', features: ['Real vitamin C', 'Gentle on skin', 'Tested by doctors'], offer_note: 'This week only', cta: 'Order today' }
+      : prompt.includes('"answer"') ? { answer: 'You can return it within 7 days if the seal is unopened. — Glow Naturals' }
+      : { title: 'AI title', body: 'AI written text about Glow Serum', hashtags: ['#Glow'], subject: 'Hello', line: 'Welcome to our lovely shop' };
+    res.end(JSON.stringify({ message: { content: JSON.stringify(reply) } }));
+  });
+});
+
 (async () => {
+  await new Promise((r) => mockAi.listen(11434, '127.0.0.1', r));
   const server = spawn('npx', ['vite', 'preview', '--port', '4173', '--strictPort'], { cwd: path.join(__dirname, '..'), stdio: 'ignore' });
   await new Promise((r) => setTimeout(r, 2500));
   const browser = await chromium.launch();
@@ -22,7 +42,7 @@ const assert = (ok, msg) => { if (!ok) throw new Error('FAILED: ' + msg); consol
     const page = await ctx.newPage();
     const external = [];
     const problems = [];
-    page.on('request', (r) => { if (!r.url().startsWith('http://localhost:4173') && !r.url().startsWith('blob:') && !r.url().startsWith('data:')) external.push(r.url()); });
+    page.on('request', (r) => { if (!r.url().startsWith('http://localhost:4173') && !/^http:\/\/(127\.0\.0\.1|localhost):11434\//.test(r.url()) && !r.url().startsWith('blob:') && !r.url().startsWith('data:')) external.push(r.url()); });
     page.on('console', (m) => { if (m.type() === 'error') problems.push(m.text()); });
     page.on('pageerror', (e) => problems.push(String(e)));
 
@@ -120,6 +140,37 @@ const assert = (ok, msg) => { if (!ok) throw new Error('FAILED: ' + msg); consol
     await page.getByRole('button', { name: 'Close' }).click();
     console.log('  ok  Telugu video rendered');
 
+    // AI agents with the local engine
+    assert(aiCalls.length === 0, 'no AI request is made while AI agents are switched off');
+    await page.getByRole('button', { name: 'AI agents', exact: true }).click();
+    await page.getByTestId('ai-found').waitFor();
+    await page.getByTestId('ai-enable').check();
+    await page.getByRole('button', { name: 'Knowledge', exact: true }).click();
+    await page.getByTestId('kb-question').fill('What is your return policy?');
+    await page.getByTestId('kb-ai').click();
+    await page.getByText('You can return it within 7 days if the seal is unopened. — Glow Naturals').waitFor();
+    assert(aiCalls.at(-1).includes('Returns are accepted within 7 days'), 'knowledge assistant sends the retrieved passage to the local engine (RAG)');
+    await page.getByRole('button', { name: 'Videos', exact: true }).click();
+    await page.getByRole('button', { name: 'Create video' }).click();
+    await page.locator('.modal select').nth(1).selectOption('square');
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await page.getByRole('button', { name: 'Review' }).waitFor({ timeout: 300000 });
+    await page.getByRole('button', { name: 'Review' }).click();
+    assert((await page.locator('.modal input').first().inputValue()) === 'Glow like never before', 'script writer agent wrote the video script, and the video still waits for approval');
+    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'AI agents', exact: true }).click();
+    await page.screenshot({ path: path.join(OUT, '14-agents.png'), fullPage: true });
+
+    // screen lock keeps the agents alive
+    await page.getByTestId('keep-working').check();
+    await page.getByRole('button', { name: 'Lock', exact: true }).click();
+    await page.getByText('Screen locked').waitFor();
+    assert((await page.getByText('Asha Rao').count()) === 0 && (await page.getByRole('button', { name: 'Leads' }).count()) === 0, 'screen lock hides all data');
+    await page.locator('input[type=password]').fill(PW);
+    await page.getByRole('button', { name: 'Unlock' }).click();
+    await page.getByRole('button', { name: 'AI agents', exact: true }).click();
+    await page.getByTestId('keep-working').uncheck();
+
     await page.getByRole('button', { name: 'Dashboard' }).click();
     await page.screenshot({ path: path.join(OUT, '4-dashboard.png'), fullPage: true });
     for (const [name, file] of [['Videos', '5-videos'], ['Content', '6-content'], ['Leads', '7-leads'], ['Campaigns', '8-campaigns'], ['Settings', '9-settings']]) {
@@ -164,5 +215,6 @@ const assert = (ok, msg) => { if (!ok) throw new Error('FAILED: ' + msg); consol
   } finally {
     await browser.close();
     server.kill();
+    mockAi.close();
   }
 })().catch((e) => { console.error(e.message || e); process.exit(1); });

@@ -1,4 +1,6 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { agentModel } from '../core/actions';
+import { aiAnswer } from '../core/agents';
 import { copyText } from '../core/files';
 import { draftAnswer, passages, search } from '../core/knowledge';
 import { put, remove, useStore } from '../core/store';
@@ -10,7 +12,17 @@ export function Knowledge() {
   const [edit, setEdit] = useState<KnowledgeDoc | null>(null);
   const [q, setQ] = useState('');
   const hits = useMemo(() => (q.trim().length > 2 ? search(data.knowledge, q) : []), [data.knowledge, q]);
-  const answer = q.trim().length > 2 ? draftAnswer(hits, settings) : '';
+  const [ai, setAi] = useState<{ q: string; text: string } | null>(null);
+  const [thinking, setThinking] = useState(false);
+  const [model, setModel] = useState<string | null>(null);
+  useEffect(() => { if (settings.ai.agents.answers) void agentModel().then(setModel); else setModel(null); }, [settings.ai]);
+  const answer = ai && ai.q === q ? ai.text : q.trim().length > 2 ? draftAnswer(hits, settings) : '';
+  async function askAi() {
+    if (!model) return;
+    setThinking(true);
+    try { setAi({ q, text: await aiAnswer(model, q, hits, settings) }); } catch (e: any) { toast(String(e?.message ?? e)); }
+    setThinking(false);
+  }
 
   async function importFiles(files: FileList | null) {
     for (const f of Array.from(files ?? [])) {
@@ -39,7 +51,10 @@ export function Knowledge() {
             <>
               <h3>Suggested reply</h3>
               <div className="pre card">{answer}</div>
-              <div><button className="btn small" onClick={async () => { await copyText(answer); toast('Reply copied'); }}><Icon name="copy" size={15} /> Copy reply</button></div>
+              <div className="row">
+                <button className="btn small" onClick={async () => { await copyText(answer); toast('Reply copied'); }}><Icon name="copy" size={15} /> Copy reply</button>
+                {model && <button className="btn small primary" data-testid="kb-ai" disabled={thinking} onClick={askAi}><Icon name="bolt" size={15} /> {thinking ? 'Writing…' : 'Write with AI agent'}</button>}
+              </div>
             </>
           )}
         </div>

@@ -5,7 +5,8 @@ app prepares everything around it — videos, posts, emails, ad copy and lead fo
 then waits for **your approval** before anything can be saved, shared or sent.
 
 It runs entirely on your own device. There is no server, no account, no subscription
-and no outside service: the app makes **zero** network connections.
+and no outside service: the app makes **no connections to the internet**. The one other
+address it can reach is an AI engine on the same computer, if you install one (see *AI agents*).
 
 ## What it does
 
@@ -26,6 +27,35 @@ you approve it. Posts and lead messages are approved automatically by default �
 **Languages:** videos can be made in English, Hindi, Telugu and Tamil (fonts are bundled). The
 fixed phrases (opening line, call-to-action, offer labels) are translated; the product name,
 description and selling points appear exactly as you typed them.
+
+## AI agents (your own, on your own PC)
+
+The app has six agents — Planner, Video maker, Script writer, Post writer, Lead assistant and
+Knowledge assistant (*AI agents* page). Out of the box they work from built-in templates.
+To make the four writing agents use a real language model **without any outside company**:
+
+1. On the PC, install the free open-source [Ollama](https://ollama.com) and download a model once,
+   e.g. `ollama pull gemma3:4b` (pick a larger model if the PC has a strong graphics card).
+2. In the app open *AI agents*, press **Check again**, tick **Let the agents write with AI**.
+
+The agents then write video scripts (in the chosen language), posts and lead messages from your
+product details plus the most relevant passages of your knowledge base (retrieval-augmented
+generation), and the Knowledge assistant answers customer questions strictly from your documents.
+Every AI draft is validated; if the engine is off or returns something unusable, the template
+text is used. Videos still always wait for your approval.
+
+**Always-on:** tick *Keep the agents working…* on the same page. On the desktop app, closing the
+window then only hides it to the system tray, the app starts with the computer, and locking
+locks the screen while work continues. After a restart you enter the password once.
+
+## Not built yet — and what each needs from you
+
+| Wanted | Status | What is needed |
+| --- | --- | --- |
+| **You or your staff as a talking presenter, lip-synced, in several languages** | Not built | A PC with a strong NVIDIA graphics card (about 12 GB video memory or more) to run open-source voice and lip-sync models; a short, well-lit recording and voice sample of each presenter, with their written consent. It could not be built or tested in the environment this app was developed in (no graphics card, model downloads blocked). |
+| **Automatic posting to YouTube, Instagram, Facebook, LinkedIn, X** | Not built | Each platform only allows this through its official connection, using developer access registered in **your** business name: a Google Cloud project (YouTube), a Meta app with business verification and app review (Instagram + Facebook), LinkedIn and X developer access (X charges for it). The app would then go online, to those platforms only. |
+| **Phones and tablets controlling the always-on PC** | Not built | Today each device runs its own copy. A secure link from phone to PC is a further stage. |
+| **Automatic translation of your product text** | Partly | Works through the Script writer agent once the AI engine is installed; without it only the fixed phrases are translated. |
 
 ## Install
 
@@ -54,9 +84,11 @@ Save backup*, then *Restore from a backup file* on the other device. The backup 
 - **Recovery key** — a one-time 147-bit key is the only other way in. Without the password or
   the recovery key the data cannot be read by anyone, including the developer.
 - **Lockout** — after 5 wrong passwords the app locks for 30 seconds, doubling up to 15 minutes.
-- **Auto-lock** after inactivity (2–60 minutes, default 10).
-- **No network** — a strict content-security policy forbids outside connections; the desktop app
-  additionally cancels every non-local request, runs the page sandboxed with no system access,
+- **Auto-lock** after inactivity (2–60 minutes, default 10). With always-on background work enabled this
+  becomes a screen lock: data stays unlocked in memory so the agents can continue — a deliberate trade-off.
+- **No internet** — a strict content-security policy forbids outside connections; the desktop app
+  additionally cancels every request except to the app itself and to the AI engine on this same
+  computer (port 11434), runs the page sandboxed with no system access,
   and blocks navigation, pop-ups and device permissions.
 - **Privacy** — follow-ups are only drafted for leads who agreed to be contacted; imported
   contacts are never assumed to have agreed. Exported spreadsheets are protected against
@@ -69,7 +101,9 @@ Save backup*, then *Restore from a backup file* on the other device. The backup 
 - **Videos are built from your real product photos** (motion, titles, music), not AI-generated
   footage of people or scenes. Lifelike generated footage needs a large AI model that cannot run
   inside a phone or PC app without an outside service. Sharp, well-lit photos give the best result.
-- **No voice-over yet**; music is generated on the device.
+- **No voice-over or on-screen presenter yet** (see *Not built yet*); music is generated on the device.
+- **AI agents were tested against a stand-in engine**, not a real model, so the quality of AI-written
+  text depends on the model you install and should be reviewed at first.
 - **Posting is a tap, not automatic.** Instagram, YouTube and WhatsApp only accept automatic
   posting through their own online services, which would break the "no third party" rule. After
   approval you save the video or use *Share* to hand it straight to those apps.

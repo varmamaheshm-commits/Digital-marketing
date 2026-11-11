@@ -1,5 +1,7 @@
 /** Background render queue: turns `queued` videos into finished files awaiting approval. */
 import { delBlob, getBlob, getOne, getSnapshot, log, patch, patchVolatile, putBlob } from '../core/store';
+import { agentModel } from '../core/actions';
+import { aiScript } from '../core/agents';
 import { renderVideo } from './render';
 
 let running = false;
@@ -22,14 +24,27 @@ export async function pumpQueue() {
       const product = getOne('products', next.productId);
       if (!product) { await patch('videos', next.id, { status: 'failed', error: 'The product was deleted.' }); continue; }
       await patch('videos', next.id, { status: 'rendering', progress: 0, error: undefined });
+      let job = next;
       try {
+        // Script-writer agent (only when the owner's AI engine is running, and only once per video).
+        if (!next.aiScript && snap.settings.ai.agents.scripts) {
+          const model = await agentModel();
+          if (model) {
+            try {
+              const script = await aiScript(model, product, snap.settings, next.lang ?? 'en', next.script, snap.data.knowledge);
+              job = { ...next, script, aiScript: true };
+              await patch('videos', next.id, { script, aiScript: true });
+              await log('auto', `Script writer agent wrote the video script for ${product.name}.`);
+            } catch { /* keep the template script */ }
+          }
+        }
         const photos: ArrayBuffer[] = [];
         for (const id of product.imageIds) {
           const b = await getBlob(id);
           if (b) photos.push(b);
         }
         let last = 0;
-        const res = await renderVideo(next, photos, snap.settings, (p) => {
+        const res = await renderVideo(job, photos, snap.settings, (p) => {
           if (p - last >= 0.02 || p === 1) { last = p; patchVolatile('videos', next.id, { progress: p }); }
         }, () => cancelId === next.id || getSnapshot().status !== 'unlocked');
         if (getSnapshot().status !== 'unlocked') break;

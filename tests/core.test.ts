@@ -1,4 +1,5 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { aiAnswer, aiCopy, aiScript } from '../src/core/agents';
 import { planAutopilot } from '../src/core/autopilot';
 import { buildCopy, buildScript } from '../src/core/copy';
 import { changePassword, createVault, lockoutDelayMs, open, openJson, passwordStrength, seal, sealJson, unlockWithPassword, unlockWithRecoveryKey } from '../src/core/crypto';
@@ -116,6 +117,47 @@ describe('knowledge base', () => {
     expect(reply).toContain('Hi Asha,');
     expect(reply).toContain('within 7 days');
     expect(draftAnswer([], DEFAULT_SETTINGS)).toContain('get back to you');
+  });
+});
+
+describe('AI agents (local engine)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+  const engine = (reply: unknown) => {
+    const calls: { url: string; body?: any }[] = [];
+    vi.stubGlobal('fetch', async (url: string, init?: any) => {
+      calls.push({ url, body: init?.body ? JSON.parse(init.body) : undefined });
+      if (url.endsWith('/api/tags')) return new Response(JSON.stringify({ models: [{ name: 'local-model' }] }));
+      return new Response(JSON.stringify({ message: { content: typeof reply === 'string' ? reply : JSON.stringify(reply) } }));
+    });
+    return calls;
+  };
+  const docs = [{ id: 'd', title: 'FAQ', text: 'Glow Serum is made in Hyderabad in small batches.', createdAt: 0 }];
+  const base = buildScript(product, DEFAULT_SETTINGS, 7);
+
+  it('script writer keeps the product name and only talks to this computer, with retrieved facts', async () => {
+    const calls = engine({ hook: 'మీ చర్మానికి కొత్త మెరుపు', tagline: 'Two weeks to brighter skin', features: ['Pure vitamin C', 'x'.repeat(200), 42], offer_note: 'This week only', cta: 'ఈరోజే ఆర్డర్ చేయండి' });
+    const out = await aiScript('local-model', product, DEFAULT_SETTINGS, 'te', base, docs);
+    expect(out[0].text).toBe('మీ చర్మానికి కొత్త మెరుపు');
+    expect(out[1].text).toBe('Glow Serum');
+    expect(out.at(-1)!.text).toBe('ఈరోజే ఆర్డర్ చేయండి');
+    const feats = out.filter((s) => s.kind === 'feature');
+    expect(feats[0].text).toBe('Pure vitamin C');
+    expect(feats[1].text).toBe(base.filter((s) => s.kind === 'feature')[1].text); // over-long line rejected
+    expect(feats[2].text).toBe(base.filter((s) => s.kind === 'feature')[2].text); // wrong type rejected
+    expect(calls.every((c) => /^http:\/\/(127\.0\.0\.1|localhost):11434\//.test(c.url))).toBe(true);
+    const prompt = calls.at(-1)!.body.messages[1].content;
+    expect(prompt).toContain('made in Hyderabad');
+    expect(prompt).toContain('Telugu');
+  });
+  it('falls back to the template when the engine returns rubbish', async () => {
+    engine({ title: 5, body: '', hashtags: ['no-hash', '#Good_One'] });
+    const fallback = buildCopy(product, DEFAULT_SETTINGS, 'instagram', 1);
+    const out = await aiCopy('local-model', product, DEFAULT_SETTINGS, 'instagram', fallback, []);
+    expect(out.title).toBe(fallback.title);
+    expect(out.body).toBe(fallback.body);
+    expect(out.hashtags).toEqual(['#Good_One']);
+    engine('not json at all');
+    await expect(aiAnswer('local-model', 'q', [], DEFAULT_SETTINGS)).rejects.toThrow();
   });
 });
 

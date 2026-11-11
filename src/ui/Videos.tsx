@@ -14,7 +14,7 @@ export function VideoCard({ v, onOpen }: { v: Video; onOpen: () => void }) {
       <button className="btn ghost" style={{ padding: 0, display: 'block' }} onClick={onOpen} aria-label={`Open video for ${product?.name}`}>
         <Picture id={v.thumbId} alt="" contain />
       </button>
-      <div className="row between"><b>{product?.name ?? 'Deleted product'}</b><Chip status={v.status} /></div>
+      <div className="row between"><b>{product?.name ?? 'Deleted product'}</b><span className="row">{v.aiScript && <span className="chip">AI script</span>}<Chip status={v.status} /></span></div>
       <small>{FORMAT_INFO[v.format].label} · {LANG_NAMES[v.lang ?? 'en']} · {v.style} · {fmtDateTime(v.createdAt)}</small>
       {(v.status === 'rendering' || v.status === 'queued') && (
         <div className="bar"><i style={{ width: `${Math.round((v.progress ?? 0) * 100)}%` }} /></div>
