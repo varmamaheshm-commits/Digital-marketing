@@ -39,6 +39,18 @@ const mockAi = require('http').createServer((req, res) => {
   const browser = await chromium.launch();
   try {
     const ctx = await browser.newContext({ viewport: { width: 1280, height: 860 }, acceptDownloads: true });
+    // Stand-in for the desktop app's publishing bridge, so the Publisher agent can be exercised in a browser.
+    await ctx.addInitScript(() => {
+      window.__published = [];
+      window.desktop = {
+        getBackground: async () => ({ enabled: false, tray: false }),
+        setBackground: async (on) => ({ enabled: on, tray: true }),
+        social: {
+          connect: async () => ({ ok: true, account: { accessToken: 't', refreshToken: 'r', expiresAt: Date.now() + 3.6e6, name: 'Glow Naturals Channel', extra: {} } }),
+          publish: async (target, account, job) => { window.__published.push({ target, bytes: job.video.byteLength, title: job.title }); return { ok: true, url: 'https://www.youtube.com/watch?v=test' }; },
+        },
+      };
+    });
     const page = await ctx.newPage();
     const external = [];
     const problems = [];
@@ -161,7 +173,37 @@ const mockAi = require('http').createServer((req, res) => {
     await page.getByRole('button', { name: 'AI agents', exact: true }).click();
     await page.screenshot({ path: path.join(OUT, '14-agents.png'), fullPage: true });
 
+    // auto-posting (Publisher agent)
+    await page.getByRole('button', { name: 'Auto-post', exact: true }).click();
+    await page.getByTestId('cid-google').fill('my-client-id');
+    await page.getByTestId('connect-google').click();
+    await page.getByTestId('auto-youtube').check();
+    await page.waitForTimeout(800);
+    assert((await page.evaluate(() => window.__published.length)) === 0, 'videos approved before auto-post was switched on are not posted retroactively');
+    await page.getByRole('button', { name: 'Videos', exact: true }).click();
+    await page.getByRole('button', { name: 'Create video' }).click();
+    await page.getByRole('button', { name: 'Create', exact: true }).click();
+    await page.waitForFunction(() => document.querySelectorAll('.chip.pending').length === 2, null, { timeout: 300000 });
+    assert((await page.evaluate(() => window.__published.length)) === 0, 'nothing is posted while a video is still waiting for approval');
+    await page.getByRole('button', { name: 'Review' }).first().click();
+    await page.getByTestId('approve-video').click();
+    await page.waitForFunction(() => window.__published.length === 1, null, { timeout: 30000 });
+    const sent = await page.evaluate(() => window.__published[0]);
+    assert(sent.target === 'youtube' && sent.bytes > 1e6 && /#Shorts$/.test(sent.title), 'approving a video posts it to YouTube automatically, with the full file');
+    await page.getByRole('link', { name: 'YouTube ✓' }).waitFor();
+    await page.getByRole('button', { name: 'Close' }).click();
+    await page.getByRole('button', { name: 'Auto-post', exact: true }).click();
+    assert((await page.getByTestId('pub-row').count()) === 1 && (await page.locator('.chip.published').count()) === 1, 'posting history shows the published video');
+    await page.screenshot({ path: path.join(OUT, '15-autopost.png'), fullPage: true });
+    const tokenLeak = await page.evaluate(async () => {
+      const db = await new Promise((res) => { const r = indexedDB.open('marketing-studio'); r.onsuccess = () => res(r.result); });
+      const all = await new Promise((res) => { const r = db.transaction('records').objectStore('records').getAll(); r.onsuccess = () => res(r.result); });
+      return /my-client-id|Glow Naturals Channel/.test(all.map((x) => new TextDecoder().decode(x.ct)).join(''));
+    });
+    assert(!tokenLeak, 'platform access keys are stored encrypted');
+
     // screen lock keeps the agents alive
+    await page.getByRole('button', { name: 'AI agents', exact: true }).click();
     await page.getByTestId('keep-working').check();
     await page.getByRole('button', { name: 'Lock', exact: true }).click();
     await page.getByText('Screen locked').waitFor();

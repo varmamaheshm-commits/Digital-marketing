@@ -125,6 +125,44 @@ export interface KnowledgeDoc {
   createdAt: number;
 }
 
+export type SocialProvider = 'google' | 'meta' | 'linkedin' | 'x';
+export type SocialTarget = 'youtube' | 'instagram' | 'facebook' | 'linkedin' | 'x';
+export const TARGET_INFO: Record<SocialTarget, { label: string; provider: SocialProvider; formats: VideoFormat[] }> = {
+  youtube: { label: 'YouTube', provider: 'google', formats: ['wide', 'reel'] },
+  instagram: { label: 'Instagram', provider: 'meta', formats: ['reel'] },
+  facebook: { label: 'Facebook', provider: 'meta', formats: ['reel', 'wide', 'square'] },
+  linkedin: { label: 'LinkedIn', provider: 'linkedin', formats: ['wide', 'square', 'reel'] },
+  x: { label: 'X', provider: 'x', formats: ['wide', 'square', 'reel'] },
+};
+/** A connected platform account. Stored only inside the encrypted vault. */
+export interface SocialAccount {
+  id: SocialProvider;
+  clientId: string;
+  clientSecret: string;
+  organizationId?: string;
+  accessToken: string;
+  refreshToken: string;
+  expiresAt: number;
+  name: string;
+  extra: Record<string, any>;
+  connectedAt: number;
+  /** Per destination: post approved videos automatically, for which shapes, and only those approved after `since`. */
+  targets: Partial<Record<SocialTarget, { auto: boolean; formats: VideoFormat[]; since: number }>>;
+}
+export interface Publication {
+  id: string;
+  videoId: string;
+  target: SocialTarget;
+  status: 'queued' | 'posting' | 'posted' | 'failed';
+  url?: string;
+  error?: string;
+  retryable?: boolean;
+  attempts: number;
+  createdAt: number;
+  triedAt?: number;
+  postedAt?: number;
+}
+
 export interface Activity {
   id: string;
   at: number;
@@ -164,10 +202,12 @@ export interface Collections {
   campaigns: Campaign;
   activity: Activity;
   knowledge: KnowledgeDoc;
+  accounts: SocialAccount;
+  publications: Publication;
   settings: Settings;
 }
 export type Col = keyof Collections;
-export const COLS: Col[] = ['products', 'videos', 'posts', 'leads', 'messages', 'campaigns', 'activity', 'knowledge', 'settings'];
+export const COLS: Col[] = ['products', 'videos', 'posts', 'leads', 'messages', 'campaigns', 'activity', 'knowledge', 'accounts', 'publications', 'settings'];
 
 export const DEFAULT_SETTINGS: Settings = {
   id: 'main',

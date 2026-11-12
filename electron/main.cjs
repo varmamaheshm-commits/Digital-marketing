@@ -8,6 +8,7 @@ const { app, BrowserWindow, protocol, session, shell, Menu, net, Tray, ipcMain, 
 const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
+const social = require('./publish.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 const ORIGIN = 'app://studio';
@@ -103,6 +104,26 @@ app.whenReady().then(() => {
     try { fs.writeFileSync(CONFIG(), JSON.stringify({ background })); } catch { /* keep in memory */ }
     applyBackground();
     return { enabled: background, tray: !!tray };
+  });
+
+  // ---- social publishing: the page hands over an approved video; uploads happen here, to platform hosts only ----
+  // Development-only hook so the flows can be exercised against a simulated platform.
+  let deps = {};
+  if (!app.isPackaged && process.env.MS_SOCIAL_TEST) {
+    deps = { endpoints: JSON.parse(process.env.MS_SOCIAL_TEST), allowHost: (u) => new URL(u).hostname === '127.0.0.1', sleep: () => Promise.resolve() };
+  }
+  const openBrowser = deps.endpoints ? (url) => fetch(url).then(() => {}) : (url) => shell.openExternal(url);
+  ipcMain.handle('social:connect', async (e, provider, creds) => {
+    if (!fromApp(e)) return { ok: false, error: 'Not allowed.' };
+    try {
+      return { ok: true, account: await social.connect(String(provider), { clientId: String(creds?.clientId ?? '').trim(), clientSecret: String(creds?.clientSecret ?? '').trim(), organizationId: String(creds?.organizationId ?? '').trim() }, openBrowser, deps) };
+    } catch (err) {
+      return { ok: false, error: String(err?.message ?? err).slice(0, 500) };
+    }
+  });
+  ipcMain.handle('social:publish', (e, target, account, job) => {
+    if (!fromApp(e)) return { ok: false, error: 'Not allowed.' };
+    return social.publish(String(target), account, job, deps);
   });
 
   // Serve the bundled app files; refuse anything outside the app folder.

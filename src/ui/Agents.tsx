@@ -10,6 +10,7 @@ const desktop = (): Desktop | undefined => (window as any).desktop;
 const AGENTS: { key: keyof Settings['ai']['agents'] | null; name: string; job: string }[] = [
   { key: null, name: 'Planner', job: 'Checks every 10 minutes what is missing — videos, posts, follow-ups — and starts the work.' },
   { key: null, name: 'Video maker', job: 'Renders each video on this device and places it in Approvals.' },
+  { key: null, name: 'Publisher', job: 'Posts each approved video to the platforms connected on the Auto-post page.' },
   { key: 'scripts', name: 'Script writer', job: 'Writes the on-screen lines of each video in the chosen language, using your product details and knowledge base.' },
   { key: 'posts', name: 'Post writer', job: 'Writes posts, emails, WhatsApp broadcasts and ad copy.' },
   { key: 'leads', name: 'Lead assistant', job: 'Writes the welcome, follow-up and offer messages for each lead.' },

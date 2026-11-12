@@ -5,8 +5,9 @@ app prepares everything around it — videos, posts, emails, ad copy and lead fo
 then waits for **your approval** before anything can be saved, shared or sent.
 
 It runs entirely on your own device. There is no server, no account, no subscription
-and no outside service: the app makes **no connections to the internet**. The one other
-address it can reach is an AI engine on the same computer, if you install one (see *AI agents*).
+and no outside service. Out of the box the app makes **no connections to the internet**. It
+reaches only two things, and only if you set them up: an AI engine on the same computer
+(see *AI agents*) and the social platforms you connect yourself (see *Automatic posting*).
 
 ## What it does
 
@@ -48,12 +49,37 @@ text is used. Videos still always wait for your approval.
 window then only hides it to the system tray, the app starts with the computer, and locking
 locks the screen while work continues. After a restart you enter the password once.
 
+## Automatic posting (YouTube, Instagram, Facebook, LinkedIn, X)
+
+On the desktop app, the **Auto-post** page connects your accounts. After that, the moment you
+approve a video the Publisher agent uploads it to every platform you switched on, with a caption
+fitted to each platform's rules, and records the link under *Posting history*.
+
+- **You register the access, once per platform.** Each platform only allows automatic posting
+  through developer access in your own business name. The Auto-post page lists the steps and the
+  exact redirect address to enter for each. Expect: Google asks for an audit before uploads can be
+  public; Meta needs business verification and App Review before posts are visible to everyone;
+  LinkedIn access must be renewed about every 60 days; X charges for API posting.
+- **Only approved videos are posted**, and the check is repeated at the moment of sending. Videos
+  approved before you switched auto-post on are not posted retroactively; use *Post to* on a video
+  to send one by hand.
+- **Failures:** temporary problems are retried up to three times, 15 minutes apart; refusals are
+  shown with the platform's own message. An upload cut off by closing the app is never retried
+  automatically, so nothing is posted twice.
+- **Security:** access keys live only in the encrypted vault. Uploads run in the desktop app's
+  background process, which may contact only the platforms' own secure addresses; the app's page
+  itself still cannot reach the internet.
+- **Tested against simulated platforms, not the real ones.** The connectors follow each platform's
+  published upload procedure and pass end-to-end against stand-ins, but no real account was
+  available during development. Do the first post to each platform with a test video (YouTube:
+  set *Publish as* to Private first) and report any refusal message.
+- Phones and tablets cannot auto-post yet; it runs on the always-on PC.
+
 ## Not built yet — and what each needs from you
 
 | Wanted | Status | What is needed |
 | --- | --- | --- |
 | **You or your staff as a talking presenter, lip-synced, in several languages** | Not built | A PC with a strong NVIDIA graphics card (about 12 GB video memory or more) to run open-source voice and lip-sync models; a short, well-lit recording and voice sample of each presenter, with their written consent. It could not be built or tested in the environment this app was developed in (no graphics card, model downloads blocked). |
-| **Automatic posting to YouTube, Instagram, Facebook, LinkedIn, X** | Not built | Each platform only allows this through its official connection, using developer access registered in **your** business name: a Google Cloud project (YouTube), a Meta app with business verification and app review (Instagram + Facebook), LinkedIn and X developer access (X charges for it). The app would then go online, to those platforms only. |
 | **Phones and tablets controlling the always-on PC** | Not built | Today each device runs its own copy. A secure link from phone to PC is a further stage. |
 | **Automatic translation of your product text** | Partly | Works through the Script writer agent once the AI engine is installed; without it only the fixed phrases are translated. |
 
@@ -86,9 +112,10 @@ Save backup*, then *Restore from a backup file* on the other device. The backup 
 - **Lockout** — after 5 wrong passwords the app locks for 30 seconds, doubling up to 15 minutes.
 - **Auto-lock** after inactivity (2–60 minutes, default 10). With always-on background work enabled this
   becomes a screen lock: data stays unlocked in memory so the agents can continue — a deliberate trade-off.
-- **No internet** — a strict content-security policy forbids outside connections; the desktop app
-  additionally cancels every request except to the app itself and to the AI engine on this same
-  computer (port 11434), runs the page sandboxed with no system access,
+- **Network** — a strict content-security policy forbids the app's page from making outside connections;
+  the desktop app additionally cancels every page request except to the app itself and to the AI engine on
+  this same computer (port 11434). Only the publishing component can reach the internet, and only the
+  connected platforms' own addresses. The page runs sandboxed with no system access,
   and blocks navigation, pop-ups and device permissions.
 - **Privacy** — follow-ups are only drafted for leads who agreed to be contacted; imported
   contacts are never assumed to have agreed. Exported spreadsheets are protected against
@@ -104,9 +131,9 @@ Save backup*, then *Restore from a backup file* on the other device. The backup 
 - **No voice-over or on-screen presenter yet** (see *Not built yet*); music is generated on the device.
 - **AI agents were tested against a stand-in engine**, not a real model, so the quality of AI-written
   text depends on the model you install and should be reviewed at first.
-- **Posting is a tap, not automatic.** Instagram, YouTube and WhatsApp only accept automatic
-  posting through their own online services, which would break the "no third party" rule. After
-  approval you save the video or use *Share* to hand it straight to those apps.
+- **WhatsApp, SMS and email are not sent automatically.** Approved lead messages open in your own
+  app with the text filled in; you press send. Text posts in the content calendar are also copied
+  and posted by hand — automatic posting covers videos.
 - **Leads are entered in the app** (by hand, CSV import, or the full-screen capture form for a
   counter or event). A public web form would need an online server.
 - **Videos are created while the app is open.** A 20-second full-HD video takes roughly

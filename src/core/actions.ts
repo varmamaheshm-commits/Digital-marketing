@@ -5,6 +5,7 @@ import { aiModels } from './ai';
 import { newVideo, planAutopilot } from './autopilot';
 import { buildCopy, buildLeadMessage } from './copy';
 import { scoreLead } from './leads';
+import { runPublisher } from './publisher';
 import { delBlob, getOne, getSnapshot, log, patch, put, remove } from './store';
 import { uid, type Lang, type Lead, type Message, type MusicMood, type Platform, type Post, type Video, type VideoFormat, type VideoStyle } from './types';
 
@@ -41,6 +42,7 @@ export async function runAutopilot(): Promise<{ videos: number; posts: number; m
       await log('auto', `Autopilot prepared ${made.videos} video(s) for your approval, plus ${made.posts} post(s) and ${made.messages} lead message(s).`);
     }
     void pumpQueue();
+    void runPublisher();
     return made;
   } finally {
     busy = false;
@@ -79,6 +81,7 @@ export async function decideVideo(id: string, approve: boolean, note = '') {
   if (!v) return;
   await patch('videos', id, { status: approve ? 'approved' : 'rejected', decidedAt: Date.now(), note });
   await log('owner', `${approve ? 'Approved' : 'Rejected'} video for ${name(v.productId)} (${v.format}).`);
+  if (approve) void runPublisher();
 }
 /** Renders the same video again (after script edits) or a fresh variation. */
 export async function rerenderVideo(v: Video, fresh: boolean) {
@@ -98,6 +101,7 @@ export async function deleteVideo(id: string) {
   cancelRender(id);
   await delBlob(v.blobId);
   await delBlob(v.thumbId);
+  for (const p of getSnapshot().data.publications.filter((x) => x.videoId === id)) await remove('publications', p.id);
   await remove('videos', id);
 }
 

@@ -1,8 +1,9 @@
 import { useState } from 'react';
 import { createVideo, decideVideo, deleteVideo, rerenderVideo } from '../core/actions';
 import { canShareFiles, copyText, saveFile, shareFile } from '../core/files';
+import { accountFor, desktopSocial, postNow } from '../core/publisher';
 import { getBlob, patch, useStore } from '../core/store';
-import { FORMAT_INFO, LANG_NAMES, type Lang, type MusicMood, type Video, type VideoFormat, type VideoStyle } from '../core/types';
+import { FORMAT_INFO, LANG_NAMES, TARGET_INFO, type Lang, type SocialTarget, type MusicMood, type Video, type VideoFormat, type VideoStyle } from '../core/types';
 import { canRenderVideo } from '../video/render';
 import { Chip, Empty, Field, fmtDateTime, fmtSize, Icon, Modal, Picture, toast, useBlobUrl } from './common';
 
@@ -88,6 +89,20 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
           {v.status === 'pending' && <div className="notice warn">Waiting for your approval. Saving and sharing unlock after you approve.</div>}
           {v.status === 'approved' && <div className="notice ok">Approved. Save or share it to {FORMAT_INFO[v.format].use}.</div>}
           {v.error && <div className="notice bad">{v.error}</div>}
+          {v.status === 'approved' && desktopSocial() && (
+            <div className="stack">
+              <h3>Post to</h3>
+              <div className="row">
+                {(Object.keys(TARGET_INFO) as SocialTarget[]).filter((t) => accountFor(data, t)).map((t) => {
+                  const pub = data.publications.find((p) => p.videoId === v.id && p.target === t);
+                  if (pub?.status === 'posted') return pub.url ? <a key={t} className="btn small ok" href={pub.url} target="_blank" rel="noreferrer noopener">{TARGET_INFO[t].label} ✓</a> : <span key={t} className="chip published">{TARGET_INFO[t].label} ✓</span>;
+                  if (pub?.status === 'queued' || pub?.status === 'posting') return <span key={t} className="chip rendering">{TARGET_INFO[t].label}…</span>;
+                  return <button key={t} className="btn small" title={pub?.error} onClick={() => postNow(v.id, t)}>{pub?.status === 'failed' ? 'Retry ' : ''}{TARGET_INFO[t].label}</button>;
+                })}
+                {!(Object.keys(TARGET_INFO) as SocialTarget[]).some((t) => accountFor(data, t)) && <small className="muted">Connect your accounts on the Auto-post page.</small>}
+              </div>
+            </div>
+          )}
         </div>
         <div className="stack">
           <h3>Script</h3>

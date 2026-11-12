@@ -26,7 +26,7 @@ export interface Snapshot {
 }
 
 const emptyData = (): Data => ({
-  products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], settings: [],
+  products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], accounts: [], publications: [], settings: [],
 });
 
 let meta: VaultMeta | undefined;

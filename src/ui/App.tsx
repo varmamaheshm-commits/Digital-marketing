@@ -2,7 +2,9 @@ import { useEffect, useRef, useState } from 'react';
 import { pendingCounts, runAutopilot } from '../core/actions';
 import { lock, useStore, verifyPassword } from '../core/store';
 import { Agents } from './Agents';
+import { recoverPublications } from '../core/publisher';
 import { isRendering, pumpQueue, recoverInterrupted } from '../video/queue';
+import { Social } from './Social';
 import { Approvals } from './Approvals';
 import { Campaigns } from './Campaigns';
 import { Icon, ToastHost } from './common';
@@ -15,7 +17,7 @@ import { Products } from './Products';
 import { SettingsPage } from './Settings';
 import { Videos } from './Videos';
 
-export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'content' | 'leads' | 'knowledge' | 'campaigns' | 'agents' | 'settings';
+export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'content' | 'leads' | 'knowledge' | 'campaigns' | 'social' | 'agents' | 'settings';
 const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'home', label: 'Dashboard', icon: 'home' },
   { id: 'approvals', label: 'Approvals', icon: 'check' },
@@ -25,6 +27,7 @@ const NAV: { id: Page; label: string; icon: string }[] = [
   { id: 'leads', label: 'Leads', icon: 'users' },
   { id: 'knowledge', label: 'Knowledge', icon: 'book' },
   { id: 'campaigns', label: 'Campaigns', icon: 'target' },
+  { id: 'social', label: 'Auto-post', icon: 'share' },
   { id: 'agents', label: 'AI agents', icon: 'bolt' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -49,7 +52,7 @@ export function App() {
   // Start background work once unlocked; re-check every 10 minutes.
   useEffect(() => {
     if (!unlocked) return;
-    void recoverInterrupted().then(() => runAutopilot()).then(() => pumpQueue());
+    void recoverInterrupted().then(() => recoverPublications()).then(() => runAutopilot()).then(() => pumpQueue());
     const t = setInterval(() => void runAutopilot(), 10 * 60_000);
     return () => clearInterval(t);
   }, [unlocked]);
@@ -113,6 +116,7 @@ export function App() {
           {page === 'leads' && <Leads />}
           {page === 'knowledge' && <Knowledge />}
           {page === 'campaigns' && <Campaigns />}
+          {page === 'social' && <Social />}
           {page === 'agents' && <Agents />}
           {page === 'settings' && <SettingsPage />}
         </div>
