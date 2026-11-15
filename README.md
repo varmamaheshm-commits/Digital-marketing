@@ -108,6 +108,24 @@ fitted to each platform's rules, and records the link under *Posting history*.
   set *Publish as* to Private first) and report any refusal message.
 - Phones and tablets cannot auto-post yet; it runs on the always-on PC.
 
+### Relay page (when a platform demands an `https://yourdomain.com/...` address)
+
+The app receives sign-in results on your own PC (`http://localhost:53682/oauth`). Meta refuses
+that address once your Meta app is Live and requires an `https://` address instead. You do not
+need to buy a domain: `docs/oauth/index.html` in this repository is a tiny page that forwards the
+sign-in result to the app on your PC (fixed destination, stores nothing). Host it free on GitHub:
+
+1. On GitHub open this repository → **Settings → Pages**.
+2. Under *Build and deployment* choose **Deploy from a branch**, pick the branch that contains
+   this code and the folder **/docs**, and save. (GitHub Pages needs a public repository, or a
+   paid GitHub plan for a private one.)
+3. After a minute your address is `https://<your-github-name>.github.io/<repository-name>/oauth/`.
+4. Enter exactly that address (a) in the platform's developer console as the redirect / callback
+   address and (b) in the app on the platform's Auto-post card under *Your https:// relay page
+   address*. Both must match character for character.
+
+Any other https website you control works the same way: upload the same file there.
+
 ## Not built yet — and what each needs from you
 
 | Wanted | Status | What is needed |

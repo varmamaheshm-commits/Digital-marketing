@@ -49,6 +49,17 @@ describe('connecting accounts (OAuth)', () => {
     expect(x).toMatchObject({ name: '@glownaturals', refreshToken: 'x-refresh' });
     expect(calls('/x/auth')[0].query.scope).toContain('media.write');
   });
+  it('uses the owner’s https relay page address when one is set, and refuses unsafe ones', async () => {
+    const creds = { clientId: 'app', clientSecret: 'sec', redirectUri: 'https://owner.github.io/site/oauth/' };
+    const url = new URL(social.authUrl('meta', creds, 'STATE', 'CH', mock.endpoints));
+    expect(url.searchParams.get('redirect_uri')).toBe('https://owner.github.io/site/oauth/');
+    await social.exchangeCode('meta', creds, 'CODE', '', deps);
+    expect(calls('/m/graph/oauth/access_token')[0].query.redirect_uri).toBe('https://owner.github.io/site/oauth/');
+    expect(social.redirectFor('meta', {})).toBe('http://localhost:53682/oauth');
+    for (const bad of ['http://owner.example/oauth', 'https://owner.example/oauth?next=x', 'javascript:alert(1)', 'not a url']) {
+      expect(() => social.redirectFor('meta', { redirectUri: bad })).toThrow();
+    }
+  });
   it('rejects a sign-in answer that does not belong to this request', async () => {
     const forged = (url: string) => fetch(`http://127.0.0.1:53682/oauth?code=stolen&state=wrong`).then(() => {}, () => {}).then(() => void url);
     await expect(social.connect('google', { clientId: 'cid', clientSecret: 's' }, forged, deps)).rejects.toThrow(/did not match|cancelled/);

@@ -142,6 +142,8 @@ export interface SocialAccount {
   clientId: string;
   clientSecret: string;
   organizationId?: string;
+  /** Optional https:// relay page address, for platforms that refuse a plain localhost address. */
+  redirectUri?: string;
   accessToken: string;
   refreshToken: string;
   expiresAt: number;

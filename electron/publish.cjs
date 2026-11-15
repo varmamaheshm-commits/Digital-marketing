@@ -62,6 +62,19 @@ const productionHost = (url) => {
   return u.protocol === 'https:' && ALLOWED_HOSTS.test(u.hostname);
 };
 
+/**
+ * The address the platform sends the browser back to. Normally this computer itself; platforms that
+ * demand https:// (Meta, once its app is Live) get the owner's relay page, which forwards here.
+ */
+function redirectFor(provider, creds) {
+  const custom = String(creds?.redirectUri ?? '').trim();
+  if (!custom) return REDIRECTS[provider];
+  let u;
+  try { u = new URL(custom); } catch { throw new PublishError('The redirect address is not a valid web address.'); }
+  if (u.protocol !== 'https:' || u.search || u.hash) throw new PublishError('The redirect address must start with https:// and contain no "?" or "#".');
+  return u.toString();
+}
+
 class PublishError extends Error {
   constructor(message, retryable = false) {
     super(message);
@@ -109,7 +122,7 @@ function pkce() {
 
 function authUrl(provider, creds, state, challenge, endpoints = ENDPOINTS) {
   const e = endpoints[provider];
-  const p = { client_id: creds.clientId, redirect_uri: REDIRECTS[provider], response_type: 'code', state };
+  const p = { client_id: creds.clientId, redirect_uri: redirectFor(provider, creds), response_type: 'code', state };
   if (provider === 'google') Object.assign(p, { scope: SCOPES.google, access_type: 'offline', prompt: 'consent', code_challenge: challenge, code_challenge_method: 'S256' });
   if (provider === 'meta') Object.assign(p, { scope: SCOPES.meta });
   if (provider === 'linkedin') Object.assign(p, { scope: SCOPES.linkedin + (creds.organizationId ? ' w_organization_social' : '') });
@@ -152,7 +165,7 @@ async function exchangeCode(provider, creds, code, verifier, deps = {}) {
   const { call } = client(deps);
   const now = Date.now();
   if (provider === 'google') {
-    const t = (await call(e.token, { method: 'POST', body: form({ grant_type: 'authorization_code', code, redirect_uri: REDIRECTS.google, client_id: creds.clientId, client_secret: creds.clientSecret, code_verifier: verifier }) }, 'Google sign-in')).json;
+    const t = (await call(e.token, { method: 'POST', body: form({ grant_type: 'authorization_code', code, redirect_uri: redirectFor('google', creds), client_id: creds.clientId, client_secret: creds.clientSecret, code_verifier: verifier }) }, 'Google sign-in')).json;
     if (!t.refresh_token) throw new PublishError('Google did not grant long-term access. Remove the app under myaccount.google.com → Security → Third-party access and connect again.');
     const ch = (await call(`${e.api}/channels?part=snippet&mine=true`, { headers: bearer(t.access_token) }, 'Reading your YouTube channel')).json;
     const channel = ch.items?.[0];
@@ -160,7 +173,7 @@ async function exchangeCode(provider, creds, code, verifier, deps = {}) {
     return { accessToken: t.access_token, refreshToken: t.refresh_token, expiresAt: now + (t.expires_in ?? 3600) * 1000, name: channel.snippet?.title ?? 'YouTube channel', extra: { channelId: channel.id } };
   }
   if (provider === 'meta') {
-    const short = (await call(`${e.graph}/oauth/access_token?${form({ client_id: creds.clientId, client_secret: creds.clientSecret, redirect_uri: REDIRECTS.meta, code })}`, {}, 'Facebook sign-in')).json;
+    const short = (await call(`${e.graph}/oauth/access_token?${form({ client_id: creds.clientId, client_secret: creds.clientSecret, redirect_uri: redirectFor('meta', creds), code })}`, {}, 'Facebook sign-in')).json;
     const long = (await call(`${e.graph}/oauth/access_token?${form({ grant_type: 'fb_exchange_token', client_id: creds.clientId, client_secret: creds.clientSecret, fb_exchange_token: short.access_token })}`, {}, 'Facebook long-term access')).json;
     const pages = (await call(`${e.graph}/me/accounts?${form({ fields: 'id,name,access_token,instagram_business_account{id,username}', limit: 100, access_token: long.access_token })}`, {}, 'Reading your Facebook Pages')).json;
     const list = (pages.data ?? []).map((p) => ({ pageId: p.id, pageName: p.name, pageToken: p.access_token, igUserId: p.instagram_business_account?.id ?? '', igName: p.instagram_business_account?.username ?? '' }));
@@ -168,14 +181,14 @@ async function exchangeCode(provider, creds, code, verifier, deps = {}) {
     return { accessToken: long.access_token, refreshToken: '', expiresAt: 0, name: list[0].pageName, extra: { pages: list, ...list[0] } };
   }
   if (provider === 'linkedin') {
-    const t = (await call(e.token, { method: 'POST', body: form({ grant_type: 'authorization_code', code, redirect_uri: REDIRECTS.linkedin, client_id: creds.clientId, client_secret: creds.clientSecret }) }, 'LinkedIn sign-in')).json;
+    const t = (await call(e.token, { method: 'POST', body: form({ grant_type: 'authorization_code', code, redirect_uri: redirectFor('linkedin', creds), client_id: creds.clientId, client_secret: creds.clientSecret }) }, 'LinkedIn sign-in')).json;
     const me = (await call(`${e.api}/v2/userinfo`, { headers: bearer(t.access_token) }, 'Reading your LinkedIn profile')).json;
     const author = creds.organizationId ? `urn:li:organization:${String(creds.organizationId).replace(/\D/g, '')}` : `urn:li:person:${me.sub}`;
     return { accessToken: t.access_token, refreshToken: t.refresh_token ?? '', expiresAt: now + (t.expires_in ?? 5184000) * 1000, name: creds.organizationId ? `Company page ${creds.organizationId}` : me.name ?? 'LinkedIn member', extra: { author } };
   }
   if (provider === 'x') {
     const headers = creds.clientSecret ? { Authorization: 'Basic ' + Buffer.from(`${creds.clientId}:${creds.clientSecret}`).toString('base64') } : {};
-    const t = (await call(e.token, { method: 'POST', headers, body: form({ grant_type: 'authorization_code', code, redirect_uri: REDIRECTS.x, code_verifier: verifier, client_id: creds.clientId }) }, 'X sign-in')).json;
+    const t = (await call(e.token, { method: 'POST', headers, body: form({ grant_type: 'authorization_code', code, redirect_uri: redirectFor('x', creds), code_verifier: verifier, client_id: creds.clientId }) }, 'X sign-in')).json;
     const me = (await call(`${e.api}/2/users/me`, { headers: bearer(t.access_token) }, 'Reading your X profile')).json;
     return { accessToken: t.access_token, refreshToken: t.refresh_token ?? '', expiresAt: now + (t.expires_in ?? 7200) * 1000, name: '@' + (me.data?.username ?? 'account'), extra: { userId: me.data?.id ?? '' } };
   }
@@ -365,4 +378,4 @@ async function publish(target, account, job, deps = {}) {
   }
 }
 
-module.exports = { publish, connect, exchangeCode, authUrl, waitForCode, refreshIfNeeded, productionHost, ENDPOINTS, REDIRECTS, OAUTH_PORT };
+module.exports = { redirectFor, publish, connect, exchangeCode, authUrl, waitForCode, refreshIfNeeded, productionHost, ENDPOINTS, REDIRECTS, OAUTH_PORT };

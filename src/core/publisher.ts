@@ -8,7 +8,7 @@ import { getBlob, getOne, getSnapshot, log, patch, put } from './store';
 import { TARGET_INFO, uid, type Publication, type Settings, type SocialAccount, type SocialProvider, type SocialTarget, type Video } from './types';
 
 export interface DesktopSocial {
-  connect: (provider: SocialProvider, creds: { clientId: string; clientSecret: string; organizationId?: string }) => Promise<{ ok: boolean; error?: string; account?: Partial<SocialAccount> }>;
+  connect: (provider: SocialProvider, creds: { clientId: string; clientSecret: string; organizationId?: string; redirectUri?: string }) => Promise<{ ok: boolean; error?: string; account?: Partial<SocialAccount> }>;
   publish: (target: SocialTarget, account: SocialAccount, job: { video: ArrayBuffer; title: string; text: string; tags: string[]; format: string; mime: string }) => Promise<{ ok: boolean; url?: string; id?: string; error?: string; retryable?: boolean; tokens?: Partial<SocialAccount> }>;
 }
 export const desktopSocial = (): DesktopSocial | undefined => (globalThis as any).desktop?.social;

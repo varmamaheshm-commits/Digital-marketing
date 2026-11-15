@@ -32,6 +32,7 @@ function ProviderCard({ p, acc, canConnect }: { p: (typeof PROVIDERS)[number]; a
   const [clientId, setClientId] = useState(acc?.clientId ?? '');
   const [clientSecret, setClientSecret] = useState(acc?.clientSecret ?? '');
   const [org, setOrg] = useState(acc?.organizationId ?? '');
+  const [redirect, setRedirect] = useState(acc?.redirectUri ?? '');
   const [busy, setBusy] = useState(false);
   const [help, setHelp] = useState(false);
   const connected = !!acc?.accessToken;
@@ -42,14 +43,14 @@ function ProviderCard({ p, acc, canConnect }: { p: (typeof PROVIDERS)[number]; a
     if (!bridge) return;
     setBusy(true);
     toast('Your browser will open — sign in and allow access');
-    const res = await bridge.connect(p.id, { clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim() }).catch((e) => ({ ok: false, error: String(e?.message ?? e), account: undefined }));
+    const res = await bridge.connect(p.id, { clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim(), redirectUri: redirect.trim() }).catch((e) => ({ ok: false, error: String(e?.message ?? e), account: undefined }));
     setBusy(false);
     if (!res.ok || !res.account) return toast(res.error ?? 'Could not connect');
     const now = Date.now();
     const targets: SocialAccount['targets'] = {};
     for (const t of p.targets) targets[t] = acc?.targets[t] ?? { auto: false, formats: TARGET_INFO[t].formats, since: now };
     await put('accounts', {
-      id: p.id, clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim() || undefined,
+      id: p.id, clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim() || undefined, redirectUri: redirect.trim() || undefined,
       accessToken: '', refreshToken: '', expiresAt: 0, name: '', extra: {}, ...res.account, connectedAt: now, targets,
     } as SocialAccount);
     await log('security', `Connected ${p.name} (${res.account.name ?? ''}).`);
@@ -114,12 +115,17 @@ function ProviderCard({ p, acc, canConnect }: { p: (typeof PROVIDERS)[number]; a
           {help && (
             <div className="notice">
               <ol style={{ margin: 0, paddingLeft: 18 }}>{p.steps.map((s) => <li key={s}>{s}</li>)}</ol>
-              <div style={{ marginTop: 8 }}>Redirect address to register: <code style={{ userSelect: 'all' }}>{p.redirect}</code></div>
+              <div style={{ marginTop: 8 }}>Redirect address to register: <code style={{ userSelect: 'all' }}>{redirect.trim() || p.redirect}</code></div>
             </div>
           )}
           <div className="form">
             <Field label={p.idLabel}><input data-testid={'cid-' + p.id} value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" /></Field>
             <Field label={p.secretLabel}><input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} autoComplete="off" /></Field>
+            {p.id !== 'google' && (
+              <Field full label="Your https:// relay page address (optional)" hint={p.id === 'meta' ? 'Needed once your Meta app is Live, because Meta then refuses a localhost address. See “Relay page” in the README.' : 'Only needed if this platform refuses the localhost address above.'}>
+                <input data-testid={'redirect-' + p.id} value={redirect} onChange={(e) => setRedirect(e.target.value)} placeholder="https://your-name.github.io/your-repository/oauth/" autoComplete="off" inputMode="url" />
+              </Field>
+            )}
             {p.id === 'linkedin' && <Field label="Organization ID (only to post as a company page)"><input value={org} onChange={(e) => setOrg(e.target.value)} inputMode="numeric" /></Field>}
           </div>
         </>
