@@ -221,12 +221,12 @@ async function youtube(acc, job, deps) {
   };
   const start = await call(`${e.upload}?uploadType=resumable&part=snippet,status`, {
     method: 'POST',
-    headers: { ...bearer(acc.accessToken), 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': 'video/mp4', 'X-Upload-Content-Length': String(job.video.length) },
+    headers: { ...bearer(acc.accessToken), 'Content-Type': 'application/json; charset=UTF-8', 'X-Upload-Content-Type': job.mime, 'X-Upload-Content-Length': String(job.video.length) },
     body: JSON.stringify(body),
   }, 'Starting the YouTube upload');
   const location = start.headers.get('location');
   if (!location) throw new PublishError('YouTube did not provide an upload address.');
-  const done = await call(location, { method: 'PUT', headers: { 'Content-Type': 'video/mp4', 'Content-Length': String(job.video.length) }, body: job.video, timeoutMs: 1_800_000 }, 'Uploading to YouTube');
+  const done = await call(location, { method: 'PUT', headers: { 'Content-Type': job.mime, 'Content-Length': String(job.video.length) }, body: job.video, timeoutMs: 1_800_000 }, 'Uploading to YouTube');
   const id = done.json?.id;
   if (!id) throw new PublishError('YouTube did not confirm the video.');
   return { id, url: `https://www.youtube.com/watch?v=${id}` };
@@ -273,7 +273,7 @@ async function facebook(acc, job, deps) {
   fd.set('access_token', token);
   fd.set('title', clip(job.title, 250));
   fd.set('description', clip(job.text, 5000));
-  fd.set('source', new Blob([job.video], { type: 'video/mp4' }), 'video.mp4');
+  fd.set('source', new Blob([job.video], { type: job.mime }), job.mime === 'video/quicktime' ? 'video.mov' : 'video.mp4');
   const res = (await call(`${e.graphVideo}/${page}/videos`, { method: 'POST', body: fd, timeoutMs: 1_800_000 }, 'Uploading to Facebook')).json;
   if (!res?.id) throw new PublishError('Facebook did not confirm the video.');
   return { id: res.id, url: `https://www.facebook.com/${page}/videos/${res.id}` };
@@ -318,7 +318,7 @@ async function x(acc, job, deps) {
   const e = (deps.endpoints ?? ENDPOINTS).x;
   const { call, sleep } = client(deps);
   const auth = bearer(acc.accessToken);
-  const init = (await call(`${e.api}/2/media/upload/initialize`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ media_type: 'video/mp4', total_bytes: job.video.length, media_category: 'tweet_video' }) }, 'Preparing the X upload')).json;
+  const init = (await call(`${e.api}/2/media/upload/initialize`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ media_type: job.mime, total_bytes: job.video.length, media_category: 'tweet_video' }) }, 'Preparing the X upload')).json;
   const id = init?.data?.id;
   if (!id) throw new PublishError('X did not start the upload.');
   const CHUNK = 4 * 1024 * 1024;
@@ -358,7 +358,7 @@ async function publish(target, account, job, deps = {}) {
     if (!video || !video.length) throw new PublishError('The video file is empty.');
     const tokens = await refreshIfNeeded(entry[0], account, deps);
     const acc = tokens ? { ...account, ...tokens } : account;
-    const out = await entry[1](acc, { title: String(job.title ?? ''), text: String(job.text ?? ''), tags: Array.isArray(job.tags) ? job.tags.map(String) : [], format: job.format, video }, deps);
+    const out = await entry[1](acc, { title: String(job.title ?? ''), text: String(job.text ?? ''), tags: Array.isArray(job.tags) ? job.tags.map(String) : [], format: job.format, mime: job.mime === 'video/quicktime' ? 'video/quicktime' : 'video/mp4', video }, deps);
     return { ok: true, ...out, tokens: tokens ?? undefined };
   } catch (e) {
     return { ok: false, error: String(e?.message ?? e).slice(0, 500), retryable: e?.retryable === true };

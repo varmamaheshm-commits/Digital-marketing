@@ -52,7 +52,8 @@ export function planAutopilot(data: Data, s: Settings, now = Date.now()): Plan {
   for (const p of products) {
     for (const format of s.autopilot.videoFormats) {
       for (const lang of s.autopilot.languages.length ? s.autopilot.languages : (['en'] as Lang[])) {
-        const mine = data.videos.filter((v) => v.productId === p.id && v.format === format && (v.lang ?? 'en') === lang && v.status !== 'failed');
+        // Uploaded recordings are the owner's own work and do not replace or block the app's generated videos.
+        const mine = data.videos.filter((v) => v.source !== 'upload' && v.productId === p.id && v.format === format && (v.lang ?? 'en') === lang && v.status !== 'failed');
         const inFlight = mine.some((v) => v.status === 'queued' || v.status === 'rendering' || v.status === 'pending');
         const recent = mine.some((v) => now - v.createdAt < s.autopilot.videoRefreshDays * DAY);
         if (!inFlight && !recent) plan.videos.push(newVideo(p, s, format, { lang }));

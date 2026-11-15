@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { createVideo, decideVideo, deleteVideo, rerenderVideo } from '../core/actions';
+import { addUploadedVideo, createVideo, decideVideo, deleteVideo, rerenderVideo } from '../core/actions';
+import { inspectVideo, MAX_UPLOAD_BYTES, shapeOf, uploadMime, type VideoInfo } from '../video/upload';
 import { canShareFiles, copyText, saveFile, shareFile } from '../core/files';
 import { accountFor, desktopSocial, postNow } from '../core/publisher';
 import { getBlob, patch, useStore } from '../core/store';
@@ -15,8 +16,8 @@ export function VideoCard({ v, onOpen }: { v: Video; onOpen: () => void }) {
       <button className="btn ghost" style={{ padding: 0, display: 'block' }} onClick={onOpen} aria-label={`Open video for ${product?.name}`}>
         <Picture id={v.thumbId} alt="" contain />
       </button>
-      <div className="row between"><b>{product?.name ?? 'Deleted product'}</b><span className="row">{v.aiScript && <span className="chip">AI script</span>}<Chip status={v.status} /></span></div>
-      <small>{FORMAT_INFO[v.format].label} · {LANG_NAMES[v.lang ?? 'en']} · {v.style} · {fmtDateTime(v.createdAt)}</small>
+      <div className="row between"><b>{product?.name ?? 'Deleted product'}</b><span className="row">{v.source === 'upload' && <span className="chip">your video</span>}{v.aiScript && <span className="chip">AI script</span>}<Chip status={v.status} /></span></div>
+      <small>{FORMAT_INFO[v.format].label} · {v.source === 'upload' ? 'uploaded' : `${LANG_NAMES[v.lang ?? 'en']} · ${v.style}`} · {fmtDateTime(v.createdAt)}</small>
       {(v.status === 'rendering' || v.status === 'queued') && (
         <div className="bar"><i style={{ width: `${Math.round((v.progress ?? 0) * 100)}%` }} /></div>
       )}
@@ -39,7 +40,8 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
   const [dirty, setDirty] = useState(false);
   if (!v) return null;
   const product = data.products.find((p) => p.id === v.productId);
-  const fileName = `${product?.name ?? 'video'}-${v.format}.mp4`;
+  const uploaded = v.source === 'upload';
+  const fileName = `${product?.name ?? 'video'}-${v.format}.${v.mime === 'video/quicktime' ? 'mov' : 'mp4'}`;
   const fullCaption = [caption, v.hashtags.join(' ')].filter(Boolean).join('\n\n');
   const done = v.status === 'pending' || v.status === 'approved' || v.status === 'rejected';
 
@@ -66,7 +68,7 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
       footer={
         <>
           <button className="btn danger" onClick={async () => { if (confirm('Delete this video?')) { await deleteVideo(v.id); onClose(); } }}><Icon name="trash" /> Delete</button>
-          {done && <button className="btn" onClick={() => rerenderVideo(v, true)}><Icon name="refresh" /> New version</button>}
+          {done && !uploaded && <button className="btn" onClick={() => rerenderVideo(v, true)}><Icon name="refresh" /> New version</button>}
           {v.status === 'pending' && <button className="btn danger" data-testid="reject-video" onClick={() => decideVideo(v.id, false)}>Reject</button>}
           {(v.status === 'pending' || v.status === 'rejected') && <button className="btn ok" data-testid="approve-video" onClick={() => decideVideo(v.id, true)}><Icon name="check" /> Approve</button>}
           {v.status === 'approved' && (
@@ -85,7 +87,7 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
               {v.status === 'failed' ? 'Could not create this video' : v.status === 'queued' ? 'Waiting in queue…' : v.status === 'rendering' ? `Creating… ${Math.round((v.progress ?? 0) * 100)}%` : 'Loading…'}
             </div>
           )}
-          <div className="row"><Chip status={v.status} /><small>{v.codec} · {fmtSize(v.sizeBytes)} · {v.seconds?.toFixed(0)}s</small></div>
+          <div className="row"><Chip status={v.status} /><small>{[v.codec, fmtSize(v.sizeBytes), v.seconds ? v.seconds.toFixed(0) + 's' : ''].filter(Boolean).join(' · ')}</small></div>
           {v.status === 'pending' && <div className="notice warn">Waiting for your approval. Saving and sharing unlock after you approve.</div>}
           {v.status === 'approved' && <div className="notice ok">Approved. Save or share it to {FORMAT_INFO[v.format].use}.</div>}
           {v.error && <div className="notice bad">{v.error}</div>}
@@ -105,7 +107,7 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
           )}
         </div>
         <div className="stack">
-          <h3>Script</h3>
+          {uploaded ? <div className="notice">This is your own recording. It is posted exactly as you uploaded it; the app wrote the caption below.</div> : <h3>Script</h3>}
           {script.map((sc, i) => (
             <label className="field" key={i}>
               <span style={{ textTransform: 'capitalize' }}>{sc.kind}</span>
@@ -118,8 +120,8 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
           <small>{v.hashtags.join(' ')}</small>
           {dirty && (
             <div className="row">
-              <button className="btn primary" onClick={applyScript}>Re-create with changes</button>
-              <button className="btn" onClick={async () => { await patch('videos', v.id, { caption }); setDirty(false); toast('Caption saved'); }}>Save caption only</button>
+              {!uploaded && <button className="btn primary" onClick={applyScript}>Re-create with changes</button>}
+              <button className={'btn' + (uploaded ? ' primary' : '')} onClick={async () => { await patch('videos', v.id, { caption }); setDirty(false); toast('Caption saved'); }}>{uploaded ? 'Save caption' : 'Save caption only'}</button>
             </div>
           )}
         </div>
@@ -132,12 +134,14 @@ export function Videos() {
   const { data } = useStore();
   const [open, setOpen] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
+  const [uploading, setUploading] = useState(false);
   const [filter, setFilter] = useState('all');
   const videos = [...data.videos].sort((a, b) => b.createdAt - a.createdAt).filter((v) => filter === 'all' || v.status === filter);
   return (
     <>
       <div className="head">
-        <div className="grow"><h1>Videos</h1><p>Created automatically from your product photos, in full HD, on this device.</p></div>
+        <div className="grow"><h1>Videos</h1><p>Upload your own recordings or let the app create videos from your product photos. Every video waits for your approval.</p></div>
+        <button className="btn" data-testid="upload-video" disabled={!data.products.length} onClick={() => setUploading(true)}><Icon name="share" /> Upload my video</button>
         <button className="btn primary" disabled={!data.products.length} onClick={() => setCreating(true)}><Icon name="plus" /> Create video</button>
       </div>
       {!canRenderVideo() && <div className="notice bad" style={{ marginBottom: 12 }}>This browser has no built-in video encoder. Use the desktop or Android app, or a current Chrome, Edge or Safari.</div>}
@@ -147,12 +151,13 @@ export function Videos() {
         ))}
       </div>
       {videos.length === 0 ? (
-        <Empty title="No videos here yet">Add a product and Autopilot will create videos for it.</Empty>
+        <Empty title="No videos here yet">Add a product, then upload your own recording or let Autopilot create videos for it.</Empty>
       ) : (
         <div className="grid g3">{videos.map((v) => <VideoCard key={v.id} v={v} onOpen={() => setOpen(v.id)} />)}</div>
       )}
       {open && <VideoDetail id={open} onClose={() => setOpen(null)} />}
       {creating && <CreateVideo onClose={() => setCreating(false)} />}
+      {uploading && <UploadVideo onClose={() => setUploading(false)} onDone={(id) => { setUploading(false); setOpen(id); }} />}
     </>
   );
 }
@@ -187,6 +192,72 @@ function CreateVideo({ onClose }: { onClose: () => void }) {
             <option value="">Automatic</option><option value="upbeat">Upbeat</option><option value="chill">Chill</option><option value="cinematic">Cinematic</option><option value="none">No music</option>
           </select>
         </Field>
+      </div>
+    </Modal>
+  );
+}
+
+function UploadVideo({ onClose, onDone }: { onClose: () => void; onDone: (videoId: string) => void }) {
+  const { data } = useStore();
+  const [productId, setProductId] = useState(data.products[0]?.id ?? '');
+  const [file, setFile] = useState<File | null>(null);
+  const [info, setInfo] = useState<VideoInfo | null>(null);
+  const [format, setFormat] = useState<VideoFormat>('reel');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState('');
+
+  async function choose(f?: File) {
+    setError(''); setFile(null); setInfo(null);
+    if (!f) return;
+    if (!uploadMime(f)) return setError('Please choose an MP4 or MOV video. Other types are not accepted by all platforms.');
+    if (f.size > MAX_UPLOAD_BYTES) return setError(`This video is ${fmtSize(f.size)}. The limit is ${fmtSize(MAX_UPLOAD_BYTES)} — export it at 1080p or trim it.`);
+    if (f.size === 0) return setError('This file is empty.');
+    setBusy('Reading the video…');
+    const i = await inspectVideo(f);
+    setBusy('');
+    setFile(f); setInfo(i);
+    if (i.readable) setFormat(shapeOf(i.width, i.height));
+  }
+  async function save() {
+    if (!file || !info) return;
+    setBusy('Securing the video… 0%');
+    try {
+      const id = await addUploadedVideo(
+        { productId, bytes: await file.arrayBuffer(), mime: uploadMime(file)!, format, seconds: info.seconds, width: info.width, height: info.height, thumb: info.thumb },
+        (p) => setBusy(`Securing the video… ${Math.round(p * 100)}%`),
+      );
+      if (id) { toast('Uploaded — caption written, waiting for your approval'); onDone(id); } else setError('Choose a product first.');
+    } catch (e: any) {
+      setError('Could not store this video: ' + String(e?.message ?? e));
+    }
+    setBusy('');
+  }
+  return (
+    <Modal title="Upload my video" onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" data-testid="upload-save" disabled={!file || !!busy} onClick={save}>{busy || 'Upload'}</button></>}>
+      <div className="stack">
+        <p className="muted">Record on your phone or camera, then upload here. The app stores it encrypted, writes the caption, title and hashtags, and — once you approve — posts it to your connected platforms.</p>
+        <div className="form">
+          <Field label="Which product is this video about?"><select value={productId} onChange={(e) => setProductId(e.target.value)}>{data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+          <Field label="Video file" hint={`MP4 or MOV, up to ${fmtSize(MAX_UPLOAD_BYTES)}`}>
+            <input data-testid="upload-file" type="file" accept="video/mp4,video/quicktime,.mp4,.m4v,.mov" onChange={(e) => choose(e.target.files?.[0])} />
+          </Field>
+        </div>
+        {error && <div className="notice bad" role="alert">{error}</div>}
+        {file && info && (
+          <>
+            {info.readable
+              ? <div className="notice ok" data-testid="upload-info">{file.name} · {info.width}×{info.height} · {Math.round(info.seconds)} seconds · {fmtSize(file.size)}</div>
+              : <div className="notice warn">This PC cannot preview this recording (common with some phone formats), but it can still be uploaded and posted. Please choose its shape below.</div>}
+            <Field label="Shape" hint={FORMAT_INFO[format].use}>
+              <select value={format} onChange={(e) => setFormat(e.target.value as VideoFormat)}>
+                {(Object.keys(FORMAT_INFO) as VideoFormat[]).map((f) => <option key={f} value={f}>{FORMAT_INFO[f].label}</option>)}
+              </select>
+            </Field>
+            {info.seconds > 140 && <div className="notice warn">Longer than 2 minutes 20 seconds: X may refuse it, and Instagram and Facebook show reels best under 90 seconds.</div>}
+            {format === 'reel' && info.seconds > 180 && <div className="notice warn">YouTube treats vertical videos over 3 minutes as normal videos, not Shorts.</div>}
+          </>
+        )}
       </div>
     </Modal>
   );

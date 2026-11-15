@@ -29,6 +29,39 @@ you approve it. Posts and lead messages are approved automatically by default �
 fixed phrases (opening line, call-to-action, offer labels) are translated; the product name,
 description and selling points appear exactly as you typed them.
 
+## Upload your own videos
+
+*Videos → Upload my video.* Record on a phone or camera, choose the product it is about, and
+upload the MP4 or MOV file (up to 250 MB). The app then does the rest:
+
+1. stores the recording encrypted, exactly as uploaded (it is never re-encoded or altered);
+2. detects its shape (vertical, square, widescreen) and length, and makes a preview picture;
+3. writes the caption, title and hashtags from the product details (with the AI agent if enabled);
+4. places it in **Approvals**; you can edit the caption there;
+5. once you approve, the Publisher agent posts it to every connected platform that is switched on
+   for that shape, and records the links.
+
+Some phone recordings cannot be previewed on a PC (for example iPhone "High Efficiency" video);
+they can still be uploaded and posted — you choose the shape by hand. For the widest compatibility
+set the phone camera to "Most compatible" / H.264 at 1080p. The app does not add titles, music or
+branding to uploaded recordings.
+
+## Setting up on a normal Windows 11 laptop (8 GB memory)
+
+1. Install the Windows setup file and create your master password; write down the recovery key.
+2. *Settings*: fill in business name, phone, brand colours and tone. Add your products with photos.
+3. *AI agents → Always-on background work*: switch it on. In Windows, set **Power → Screen and sleep →
+   When plugged in, put my device to sleep: Never**, and **lid close action: Do nothing**; keep the
+   laptop plugged in.
+4. *Auto-post*: connect each platform (one-time registration steps are shown on each card) and tick
+   the platforms to post to automatically.
+5. Daily use: upload a recording or let the app create videos, open **Approvals**, approve.
+
+On 8 GB the AI engine is optional: only a very small model fits (for example `ollama pull gemma3:1b`)
+and its writing is weaker than the built-in templates in some languages — leave *Let the agents
+write with AI* off unless you are happy with its text. A lip-synced presenter is not feasible on
+this memory size.
+
 ## AI agents (your own, on your own PC)
 
 The app has six agents — Planner, Video maker, Script writer, Post writer, Lead assistant and

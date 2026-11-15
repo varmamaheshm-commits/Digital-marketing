@@ -202,6 +202,31 @@ const mockAi = require('http').createServer((req, res) => {
     });
     assert(!tokenLeak, 'platform access keys are stored encrypted');
 
+    // upload my own video → caption written → approval → auto-post
+    await page.getByRole('button', { name: 'Videos', exact: true }).click();
+    await page.getByTestId('upload-video').click();
+    await page.getByTestId('upload-file').setInputFiles(path.join(OUT, 'Glow-Serum-wide.mp4'));
+    await page.getByTestId('upload-info').waitFor({ timeout: 30000 });
+    assert(/1920×1080 · 19 seconds/.test(await page.getByTestId('upload-info').innerText()), 'an uploaded recording is read: size, length and shape detected');
+    const before = await page.evaluate(() => window.__published.length);
+    await page.getByTestId('upload-save').click();
+    await page.getByTestId('approve-video').waitFor({ timeout: 60000 });
+    assert((await page.locator('.modal textarea').inputValue()).includes('Glow Serum'), 'the app wrote the caption for the uploaded video');
+    assert((await page.getByText('Re-create with changes').count()) === 0 && (await page.getByRole('button', { name: 'New version' }).count()) === 0, 'an uploaded recording is never altered by the app');
+    await page.waitForTimeout(500);
+    assert((await page.evaluate(() => window.__published.length)) === before, 'the uploaded video is not posted before approval');
+    await page.getByTestId('approve-video').click();
+    await page.waitForFunction((n) => window.__published.length === n + 1, before, { timeout: 30000 });
+    const up = await page.evaluate(() => window.__published.at(-1));
+    assert(up.target === 'youtube' && up.bytes === fs.statSync(path.join(OUT, 'Glow-Serum-wide.mp4')).size, 'after approval the exact uploaded file is posted automatically');
+    await page.getByRole('button', { name: 'Close' }).click();
+    const parts = await page.evaluate(async () => {
+      const db = await new Promise((res) => { const r = indexedDB.open('marketing-studio'); r.onsuccess = () => res(r.result); });
+      const keys = await new Promise((res) => { const r = db.transaction('blobs').objectStore('blobs').getAllKeys(); r.onsuccess = () => res(r.result); });
+      return keys.filter((k) => k.includes('#')).length;
+    });
+    assert(parts >= 2, 'large uploads are stored as separately encrypted parts');
+
     // screen lock keeps the agents alive
     await page.getByRole('button', { name: 'AI agents', exact: true }).click();
     await page.getByTestId('keep-working').check();

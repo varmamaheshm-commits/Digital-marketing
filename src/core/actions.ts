@@ -6,7 +6,7 @@ import { newVideo, planAutopilot } from './autopilot';
 import { buildCopy, buildLeadMessage } from './copy';
 import { scoreLead } from './leads';
 import { runPublisher } from './publisher';
-import { delBlob, getOne, getSnapshot, log, patch, put, remove } from './store';
+import { delBlob, getOne, getSnapshot, log, patch, put, putBlob, remove } from './store';
 import { uid, type Lang, type Lead, type Message, type MusicMood, type Platform, type Post, type Video, type VideoFormat, type VideoStyle } from './types';
 
 let busy = false;
@@ -85,6 +85,7 @@ export async function decideVideo(id: string, approve: boolean, note = '') {
 }
 /** Renders the same video again (after script edits) or a fresh variation. */
 export async function rerenderVideo(v: Video, fresh: boolean) {
+  if (v.source === 'upload') return; // an uploaded recording is never re-created by the app
   await delBlob(v.blobId);
   await delBlob(v.thumbId);
   let next: Video = { ...v, status: 'queued', blobId: undefined, thumbId: undefined, progress: undefined, error: undefined, decidedAt: undefined, createdAt: Date.now() };
@@ -103,6 +104,36 @@ export async function deleteVideo(id: string) {
   await delBlob(v.thumbId);
   for (const p of getSnapshot().data.publications.filter((x) => x.videoId === id)) await remove('publications', p.id);
   await remove('videos', id);
+}
+
+/**
+ * Adds the owner's own recording. The file is stored encrypted exactly as uploaded; the app writes
+ * the caption, title and hashtags, then the video waits for approval like every other video.
+ */
+export async function addUploadedVideo(input: { productId: string; bytes: ArrayBuffer; mime: string; format: VideoFormat; seconds: number; width: number; height: number; thumb: ArrayBuffer | null }, onProgress?: (fraction: number) => void): Promise<string | null> {
+  const p = getOne('products', input.productId);
+  if (!p) return null;
+  const snap = getSnapshot();
+  const seed = Math.floor(Math.random() * 2 ** 31);
+  let copy = buildCopy(p, snap.settings, input.format === 'wide' ? 'youtube' : 'instagram', seed);
+  if (snap.settings.ai.agents.posts) {
+    const model = await agentModel();
+    if (model) {
+      try { copy = await aiCopy(model, p, snap.settings, input.format === 'wide' ? 'youtube' : 'instagram', copy, snap.data.knowledge); } catch { /* keep template */ }
+    }
+  }
+  const blobId = await putBlob(input.bytes, undefined, onProgress);
+  const thumbId = input.thumb ? await putBlob(input.thumb) : undefined;
+  const size = input.width && input.height ? ` ${input.width}×${input.height}` : '';
+  const video: Video = {
+    id: uid(), productId: p.id, format: input.format, lang: 'en', source: 'upload', style: 'clean', mood: 'none', seed, script: [],
+    title: input.format === 'wide' ? copy.title : p.name, caption: copy.body, hashtags: copy.hashtags,
+    status: 'pending', blobId, thumbId, mime: input.mime, sizeBytes: input.bytes.byteLength, seconds: input.seconds || undefined,
+    codec: `Your recording (${input.mime === 'video/quicktime' ? 'MOV' : 'MP4'}${size})`, createdAt: Date.now(),
+  };
+  await put('videos', video);
+  await log('owner', `Uploaded a video for ${p.name}; caption written, waiting for approval.`);
+  return video.id;
 }
 
 // ----- products -----

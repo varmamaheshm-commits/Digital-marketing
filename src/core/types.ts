@@ -34,6 +34,8 @@ export interface Video {
   productId: string;
   format: VideoFormat;
   lang?: Lang;
+  /** `upload`: the owner's own recording, posted as it is. Absent / `generated`: created by the app. */
+  source?: 'generated' | 'upload';
   /** True once the script-writer agent has rewritten the script. */
   aiScript?: boolean;
   style: VideoStyle;

@@ -14,7 +14,7 @@ import {
   type Sealed,
   type VaultMeta,
 } from './crypto';
-import { dbClear, dbDel, dbEntries, dbGet, dbPut } from './db';
+import { dbClear, dbDel, dbEntries, dbGet, dbKeys, dbPut } from './db';
 import { COLS, DEFAULT_SETTINGS, uid, type Activity, type Col, type Collections, type Settings } from './types';
 
 export type Status = 'loading' | 'new' | 'locked' | 'unlocked';
@@ -205,17 +205,53 @@ export const saveSettings = (s: Settings) => put('settings', s);
 
 // ---------- encrypted files (photos, rendered videos) ----------
 
-export async function putBlob(data: ArrayBuffer | Uint8Array, id = uid()): Promise<string> {
-  await dbPut('blobs', id, await seal(key(), data, `blob:${id}`));
+/** Large files (uploaded recordings) are stored as separately encrypted parts so memory use stays bounded. */
+export const BLOB_PART = 16 * 1024 * 1024;
+interface Manifest { parts: number; size: number }
+type StoredBlob = Sealed | { manifest: Sealed };
+
+export async function putBlob(data: ArrayBuffer | Uint8Array, id = uid(), onProgress?: (fraction: number) => void): Promise<string> {
+  const bytes = data instanceof Uint8Array ? data : new Uint8Array(data);
+  if (bytes.byteLength <= BLOB_PART) {
+    await dbPut('blobs', id, await seal(key(), bytes, `blob:${id}`));
+    return id;
+  }
+  const parts = Math.ceil(bytes.byteLength / BLOB_PART);
+  for (let i = 0; i < parts; i++) {
+    const k = `${id}#${i}`;
+    await dbPut('blobs', k, await seal(key(), bytes.subarray(i * BLOB_PART, (i + 1) * BLOB_PART), `blob:${k}`));
+    onProgress?.((i + 1) / parts);
+  }
+  // The manifest is written last, so an interrupted save never looks like a complete file.
+  const manifest: Manifest = { parts, size: bytes.byteLength };
+  await dbPut('blobs', id, { manifest: await sealJson(key(), manifest, `blob:${id}`) });
   return id;
 }
 
 export async function getBlob(id: string): Promise<ArrayBuffer | null> {
-  const sealed = await dbGet<Sealed>('blobs', id);
-  return sealed ? open(key(), sealed, `blob:${id}`) : null;
+  const stored = await dbGet<StoredBlob>('blobs', id);
+  if (!stored) return null;
+  if (!('manifest' in stored)) return open(key(), stored, `blob:${id}`);
+  const m = await openJson<Manifest>(key(), stored.manifest, `blob:${id}`);
+  const out = new Uint8Array(m.size);
+  let at = 0;
+  for (let i = 0; i < m.parts; i++) {
+    const k = `${id}#${i}`;
+    const part = await dbGet<Sealed>('blobs', k);
+    if (!part) throw new Error('A stored file is incomplete.');
+    const plain = new Uint8Array(await open(key(), part, `blob:${k}`));
+    out.set(plain, at);
+    at += plain.byteLength;
+  }
+  if (at !== m.size) throw new Error('A stored file is incomplete.');
+  return out.buffer;
 }
 
-export const delBlob = (id?: string) => (id ? dbDel('blobs', id) : Promise.resolve());
+export async function delBlob(id?: string) {
+  if (!id) return;
+  for (const k of await dbKeys('blobs')) if (k.startsWith(id + '#')) await dbDel('blobs', k);
+  await dbDel('blobs', id);
+}
 
 // ---------- encrypted backup ----------
 
@@ -238,9 +274,9 @@ export async function exportBackup(includeVideos: boolean): Promise<Blob> {
   for (const store of ['records', 'blobs'] as const) {
     parts.push(`,"${store}":{`);
     let first = true;
-    for (const [k, s] of await dbEntries<Sealed>(store)) {
-      if (store === 'blobs' && !includeVideos && videoBlobIds.has(k)) continue;
-      parts.push((first ? '' : ',') + JSON.stringify(k) + ':' + JSON.stringify(packSealed(s)));
+    for (const [k, s] of await dbEntries<StoredBlob>(store)) {
+      if (store === 'blobs' && !includeVideos && videoBlobIds.has(k.split('#')[0])) continue;
+      parts.push((first ? '' : ',') + JSON.stringify(k) + ':' + JSON.stringify('manifest' in s ? { manifest: packSealed(s.manifest) } : packSealed(s)));
       first = false;
     }
     parts.push('}');
@@ -269,7 +305,7 @@ export async function importBackup(file: Blob): Promise<string | null> {
   await dbClear('records');
   await dbClear('blobs');
   for (const [k, s] of Object.entries<any>(j.records ?? {})) await dbPut('records', k, unpackSealed(s));
-  for (const [k, s] of Object.entries<any>(j.blobs ?? {})) await dbPut('blobs', k, unpackSealed(s));
+  for (const [k, s] of Object.entries<any>(j.blobs ?? {})) await dbPut('blobs', k, s.manifest ? { manifest: unpackSealed(s.manifest) } : unpackSealed(s));
   await dbPut('meta', 'vault', m);
   await dbDel('meta', 'lockout');
   meta = m;

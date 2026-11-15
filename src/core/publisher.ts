@@ -9,7 +9,7 @@ import { TARGET_INFO, uid, type Publication, type Settings, type SocialAccount, 
 
 export interface DesktopSocial {
   connect: (provider: SocialProvider, creds: { clientId: string; clientSecret: string; organizationId?: string }) => Promise<{ ok: boolean; error?: string; account?: Partial<SocialAccount> }>;
-  publish: (target: SocialTarget, account: SocialAccount, job: { video: ArrayBuffer; title: string; text: string; tags: string[]; format: string }) => Promise<{ ok: boolean; url?: string; id?: string; error?: string; retryable?: boolean; tokens?: Partial<SocialAccount> }>;
+  publish: (target: SocialTarget, account: SocialAccount, job: { video: ArrayBuffer; title: string; text: string; tags: string[]; format: string; mime: string }) => Promise<{ ok: boolean; url?: string; id?: string; error?: string; retryable?: boolean; tokens?: Partial<SocialAccount> }>;
 }
 export const desktopSocial = (): DesktopSocial | undefined => (globalThis as any).desktop?.social;
 
@@ -100,7 +100,7 @@ export async function runPublisher(): Promise<void> {
       const text = postText(job.target, v, product?.name ?? 'Our product', snap.settings);
       let res: Awaited<ReturnType<DesktopSocial['publish']>>;
       try {
-        res = await bridge.publish(job.target, acc, { video: bytes, ...text, format: v.format });
+        res = await bridge.publish(job.target, acc, { video: bytes, ...text, format: v.format, mime: v.mime ?? 'video/mp4' });
       } catch (e: any) {
         res = { ok: false, error: String(e?.message ?? e) };
       }

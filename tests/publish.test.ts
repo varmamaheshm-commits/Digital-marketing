@@ -76,6 +76,17 @@ describe('posting a video', () => {
     }
     expect((await social.publish('youtube', { accessToken: 't', extra: {} }, { ...job, video: new ArrayBuffer(0) }, deps)).error).toMatch(/empty/);
   });
+  it('sends an uploaded phone recording (MOV) with its own file type', async () => {
+    const mov = { ...job, mime: 'video/quicktime', format: 'wide' };
+    await social.publish('youtube', { accessToken: 'g-access', expiresAt: Date.now() + 3.6e6, extra: {} }, mov, deps);
+    expect(calls('/g/upload')[0].headers['x-upload-content-type']).toBe('video/quicktime');
+    expect(calls('/g/session/abc')[0].headers['content-type']).toBe('video/quicktime');
+    await social.publish('x', { accessToken: 'x-access', expiresAt: Date.now() + 1e9, extra: {} }, mov, deps);
+    expect(JSON.parse(calls('/x/api/2/media/upload/initialize')[0].text).media_type).toBe('video/quicktime');
+    // anything unexpected is treated as MP4 rather than passed through
+    await social.publish('youtube', { accessToken: 'g-access', expiresAt: Date.now() + 3.6e6, extra: {} }, { ...job, mime: 'text/html' }, deps);
+    expect(calls('/g/upload')[1].headers['x-upload-content-type']).toBe('video/mp4');
+  });
   it('YouTube: renews expired access first and hands the new token back', async () => {
     const res = await social.publish('youtube', { accessToken: 'old', refreshToken: 'g-refresh', clientId: 'cid', clientSecret: 'sec', expiresAt: Date.now() - 1000, extra: {} }, job, deps);
     expect(res.ok).toBe(true);
