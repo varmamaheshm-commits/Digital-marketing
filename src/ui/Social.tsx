@@ -25,6 +25,7 @@ const PROVIDERS: ProviderInfo[] = [
       { title: 'Check your accounts', text: 'You need a Facebook Page, and your Instagram must be a Business or Creator account linked to that Page (Instagram app → Settings → Account type and tools).' },
       { title: 'Create a Meta app', text: 'Press Create app, give it a name, and choose the Business type when asked.', link: 'https://developers.facebook.com/apps/', linkLabel: 'Open Meta for Developers' },
       { title: 'Add Facebook Login for Business', text: 'In your app, add the product “Facebook Login for Business”. Open its Settings and paste the address below into “Valid OAuth Redirect URIs”, then Save.', copyRedirect: true },
+      { title: 'Switch on the posting permissions', text: 'Under Facebook Login for Business → Configurations, press Create configuration: choose “User access token”, select your Page and Instagram account as assets, and tick the permissions pages_show_list, pages_read_engagement, pages_manage_posts, instagram_basic, instagram_content_publish and business_management. Save and copy the Configuration ID. If a permission is missing from the list, first add it under Use cases (Page and Instagram use cases) or App Review → Permissions and features.' },
       { title: 'Copy the App ID and secret', text: 'Open App settings → Basic. Copy the App ID, press Show next to App secret and copy that too.' },
     ],
     warn: 'While the Meta app is in development mode, its posts are visible only to people with a role on the app. To go Live, Meta requires business verification and App Review.',
@@ -53,6 +54,7 @@ const PROVIDERS: ProviderInfo[] = [
 /** Turns a platform's technical refusal into advice the owner can act on. */
 function explain(error: string, p: ProviderInfo): string {
   const e = error.toLowerCase();
+  if (/invalid scope/.test(e)) return 'Meta says some permissions are not switched on in your Meta app. Create a configuration as described in the “Switch on the posting permissions” step and paste its Configuration ID below.';
   if (/redirect|callback/.test(e)) return `${p.name} says the redirect address does not match. Copy the address from the step above again and paste it into ${p.name}'s settings exactly, with nothing added.`;
   if (/invalid_client|unauthorized_client|client secret|app secret|validating application/.test(e)) return `${p.name} did not recognise the ${p.idLabel} or secret. Copy both again — a missing character or extra space is the usual cause.`;
   if (/access_denied|cancel|did not match/.test(e)) return 'The sign-in was cancelled or not allowed. Press Connect again and choose Allow in the browser.';
@@ -78,6 +80,7 @@ function SetupWizard({ p, acc, onClose }: { p: ProviderInfo; acc?: SocialAccount
   const [org, setOrg] = useState(acc?.organizationId ?? '');
   const [redirect, setRedirect] = useState(acc?.redirectUri ?? (p.id === 'meta' ? remembered : ''));
   const [useRelay, setUseRelay] = useState(!!(acc?.redirectUri ?? (p.id === 'meta' && remembered)));
+  const [configId, setConfigId] = useState(acc?.configId ?? '');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const bridge = desktopSocial();
@@ -88,14 +91,14 @@ function SetupWizard({ p, acc, onClose }: { p: ProviderInfo; acc?: SocialAccount
   async function connect() {
     if (!bridge) return;
     setBusy(true); setError('');
-    const res = await bridge.connect(p.id, { clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim(), redirectUri: useRelay ? redirect.trim() : '' }).catch((e) => ({ ok: false, error: String(e?.message ?? e), account: undefined }));
+    const res = await bridge.connect(p.id, { clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim(), redirectUri: useRelay ? redirect.trim() : '', configId: configId.trim() }).catch((e) => ({ ok: false, error: String(e?.message ?? e), account: undefined }));
     setBusy(false);
     if (!res.ok || !res.account) return setError(explain(res.error ?? 'Could not connect.', p));
     const now = Date.now();
     const targets: SocialAccount['targets'] = {};
     for (const t of p.targets) targets[t] = acc?.targets[t] ?? { auto: true, formats: TARGET_INFO[t].formats, since: now };
     await put('accounts', {
-      id: p.id, clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim() || undefined, redirectUri: useRelay ? redirect.trim() : undefined,
+      id: p.id, clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim() || undefined, redirectUri: useRelay ? redirect.trim() : undefined, configId: configId.trim() || undefined,
       accessToken: '', refreshToken: '', expiresAt: 0, name: '', extra: {}, ...res.account, connectedAt: now, targets,
     } as SocialAccount);
     await log('security', `Connected ${p.name} (${res.account.name ?? ''}).`);
@@ -122,6 +125,7 @@ function SetupWizard({ p, acc, onClose }: { p: ProviderInfo; acc?: SocialAccount
           <div className="form">
             <Field label={p.idLabel}><input data-testid={'cid-' + p.id} value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" spellCheck={false} /></Field>
             <Field label={p.secretLabel + (p.secretOptional ? ' (leave empty for a Native App)' : '')}><input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} autoComplete="off" /></Field>
+            {p.id === 'meta' && <Field full label="Configuration ID (optional)" hint="If Meta shows “Invalid Scopes”, create a configuration under Facebook Login for Business → Configurations (see the step above) and paste its ID here."><input data-testid="config-meta" value={configId} onChange={(e) => setConfigId(e.target.value)} inputMode="numeric" autoComplete="off" /></Field>}
             {p.id === 'linkedin' && <Field label="Organization ID (only to post as your company page)" hint="Needs LinkedIn’s “Community Management API” approval. Leave empty to post as yourself."><input value={org} onChange={(e) => setOrg(e.target.value)} inputMode="numeric" /></Field>}
           </div>
           {p.id !== 'google' && (

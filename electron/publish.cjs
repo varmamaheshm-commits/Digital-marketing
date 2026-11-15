@@ -124,7 +124,8 @@ function authUrl(provider, creds, state, challenge, endpoints = ENDPOINTS) {
   const e = endpoints[provider];
   const p = { client_id: creds.clientId, redirect_uri: redirectFor(provider, creds), response_type: 'code', state };
   if (provider === 'google') Object.assign(p, { scope: SCOPES.google, access_type: 'offline', prompt: 'consent', code_challenge: challenge, code_challenge_method: 'S256' });
-  if (provider === 'meta') Object.assign(p, { scope: SCOPES.meta });
+  // Facebook Login for Business: a saved "configuration" in the Meta app lists the permissions, replacing the scope list.
+  if (provider === 'meta') Object.assign(p, /^\d{5,25}$/.test(String(creds.configId ?? '')) ? { config_id: String(creds.configId) } : { scope: SCOPES.meta });
   if (provider === 'linkedin') Object.assign(p, { scope: SCOPES.linkedin + (creds.organizationId ? ' w_organization_social' : '') });
   if (provider === 'x') Object.assign(p, { scope: SCOPES.x, code_challenge: challenge, code_challenge_method: 'S256' });
   return `${e.auth}?${form(p)}`;

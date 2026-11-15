@@ -123,7 +123,7 @@ app.whenReady().then(() => {
   ipcMain.handle('social:connect', async (e, provider, creds) => {
     if (!fromApp(e)) return { ok: false, error: 'Not allowed.' };
     try {
-      return { ok: true, account: await social.connect(String(provider), { clientId: String(creds?.clientId ?? '').trim(), clientSecret: String(creds?.clientSecret ?? '').trim(), organizationId: String(creds?.organizationId ?? '').trim(), redirectUri: String(creds?.redirectUri ?? '').trim() }, openBrowser, deps) };
+      return { ok: true, account: await social.connect(String(provider), { clientId: String(creds?.clientId ?? '').trim(), clientSecret: String(creds?.clientSecret ?? '').trim(), organizationId: String(creds?.organizationId ?? '').trim(), redirectUri: String(creds?.redirectUri ?? '').trim(), configId: String(creds?.configId ?? '').trim() }, openBrowser, deps) };
     } catch (err) {
       return { ok: false, error: String(err?.message ?? err).slice(0, 500) };
     }

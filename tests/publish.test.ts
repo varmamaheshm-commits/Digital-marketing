@@ -56,6 +56,11 @@ describe('connecting accounts (OAuth)', () => {
     await social.exchangeCode('meta', creds, 'CODE', '', deps);
     expect(calls('/m/graph/oauth/access_token')[0].query.redirect_uri).toBe('https://owner.github.io/site/oauth/');
     expect(social.redirectFor('meta', {})).toBe('http://localhost:53682/oauth');
+    // Facebook Login for Business: a configuration ID replaces the permission list
+    const cfg = new URL(social.authUrl('meta', { clientId: 'app', configId: '1234567890123456' }, 'S', 'C', mock.endpoints)).searchParams;
+    expect(cfg.get('config_id')).toBe('1234567890123456');
+    expect(cfg.has('scope')).toBe(false);
+    expect(new URL(social.authUrl('meta', { clientId: 'app', configId: 'abc&x=1' }, 'S', 'C', mock.endpoints)).searchParams.has('config_id')).toBe(false);
     for (const bad of ['http://owner.example/oauth', 'https://owner.example/oauth?next=x', 'javascript:alert(1)', 'not a url']) {
       expect(() => social.redirectFor('meta', { redirectUri: bad })).toThrow();
     }

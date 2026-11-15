@@ -144,6 +144,8 @@ export interface SocialAccount {
   organizationId?: string;
   /** Optional https:// relay page address, for platforms that refuse a plain localhost address. */
   redirectUri?: string;
+  /** Meta only: ID of a Facebook Login for Business configuration that lists the permissions. */
+  configId?: string;
   accessToken: string;
   refreshToken: string;
   expiresAt: number;
