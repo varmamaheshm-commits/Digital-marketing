@@ -13,7 +13,14 @@ const social = require('./publish.cjs');
 const DIST = path.join(__dirname, '..', 'dist');
 const ORIGIN = 'app://studio';
 // Only these link types may leave the app, and they open in the owner's own mail / phone / browser app.
-const EXTERNAL = /^(mailto:|tel:|sms:|https:\/\/wa\.me\/)/i;
+const EXTERNAL_LINK = /^(mailto:|tel:|sms:|https:\/\/wa\.me\/)/i;
+// Web pages the app may open in the owner's browser: the platforms' own sites (published posts and
+// the developer consoles used once during setup). Anything else is refused.
+const EXTERNAL_HOST = /(^|\.)(youtube\.com|youtu\.be|google\.com|facebook\.com|instagram\.com|linkedin\.com|x\.com)$/i;
+const EXTERNAL = { test: (url) => {
+  if (EXTERNAL_LINK.test(url)) return true;
+  try { const u = new URL(url); return u.protocol === 'https:' && EXTERNAL_HOST.test(u.hostname); } catch { return false; }
+} };
 
 protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true } },

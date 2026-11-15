@@ -175,9 +175,14 @@ const mockAi = require('http').createServer((req, res) => {
 
     // auto-posting (Publisher agent)
     await page.getByRole('button', { name: 'Auto-post', exact: true }).click();
+    await page.getByTestId('setup-google').click();
+    assert((await page.getByText(/Step \d of 5/).count()) === 5, 'connecting a platform is a guided walkthrough');
+    await page.screenshot({ path: path.join(OUT, '17-wizard.png') });
     await page.getByTestId('cid-google').fill('my-client-id');
+    await page.locator('.modal input[type=password]').fill('my-secret');
     await page.getByTestId('connect-google').click();
-    await page.getByTestId('auto-youtube').check();
+    assert(await page.getByTestId('auto-youtube').isChecked(), 'a newly connected platform is switched on for automatic posting');
+    await page.screenshot({ path: path.join(OUT, '16-connected.png') });
     await page.waitForTimeout(800);
     assert((await page.evaluate(() => window.__published.length)) === 0, 'videos approved before auto-post was switched on are not posted retroactively');
     await page.getByRole('button', { name: 'Videos', exact: true }).click();
