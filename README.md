@@ -134,6 +134,22 @@ Any other https website you control works the same way: upload the same file the
 | **Phones and tablets controlling the always-on PC** | Not built | Today each device runs its own copy. A secure link from phone to PC is a further stage. |
 | **Automatic translation of your product text** | Partly | Works through the Script writer agent once the AI engine is installed; without it only the fixed phrases are translated. |
 
+## What works on which device
+
+| | Windows / Mac / Linux PC | Android phone or tablet | iPhone / iPad |
+| --- | --- | --- | --- |
+| Install | Setup file | APK file | Add to Home Screen from a hosted copy |
+| Products, leads, campaigns, knowledge base, content calendar | Yes | Yes | Yes |
+| Create videos from product photos | Yes | Yes, slower | Depends on the iOS version |
+| Upload your own videos, approve, save / share by hand | Yes | Yes | Yes |
+| Automatic posting to social platforms | **Yes** | No — approve on the PC | No — approve on the PC |
+| Always-on background work | **Yes** (tray, starts with the PC) | Only while the app is open | Only while the app is open |
+| AI writing agents (local model) | Yes, if a model is installed | No | No |
+
+Each device keeps its own encrypted copy of the data; move it with *Settings → Backup & restore*.
+A phone cannot yet control the PC's copy. The layout is checked automatically at phone (390 px),
+tablet (820 px) and PC (1280 px) sizes by `tests/responsive.cjs`.
+
 ## Install
 
 Setup files are built automatically by the *Build installers* workflow (GitHub → **Actions**
@@ -199,6 +215,7 @@ npm install
 npm run dev          # browser, http://localhost:5173
 npm test             # unit tests (encryption, copywriter, leads, autopilot)
 npm run test:e2e     # full journey in a real browser incl. video rendering (needs Playwright + ffprobe)
+node tests/responsive.cjs   # every page and dialog at phone, tablet and PC sizes (after npm run build)
 npm run desktop      # run the desktop app
 npm run dist:win     # build the Windows installer (on Windows); dist:linux / dist:mac likewise
 ```

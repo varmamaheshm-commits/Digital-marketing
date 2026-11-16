@@ -18,13 +18,14 @@ import { SettingsPage } from './Settings';
 import { Videos } from './Videos';
 
 export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'content' | 'leads' | 'knowledge' | 'campaigns' | 'social' | 'agents' | 'settings';
-const NAV: { id: Page; label: string; icon: string }[] = [
-  { id: 'home', label: 'Dashboard', icon: 'home' },
-  { id: 'approvals', label: 'Approvals', icon: 'check' },
+/** `main` items stay on the phone's bottom bar; the rest open from its More button. */
+const NAV: { id: Page; label: string; icon: string; main?: boolean }[] = [
+  { id: 'home', label: 'Dashboard', icon: 'home', main: true },
+  { id: 'approvals', label: 'Approvals', icon: 'check', main: true },
   { id: 'products', label: 'Products', icon: 'box' },
-  { id: 'videos', label: 'Videos', icon: 'video' },
+  { id: 'videos', label: 'Videos', icon: 'video', main: true },
   { id: 'content', label: 'Content', icon: 'calendar' },
-  { id: 'leads', label: 'Leads', icon: 'users' },
+  { id: 'leads', label: 'Leads', icon: 'users', main: true },
   { id: 'knowledge', label: 'Knowledge', icon: 'book' },
   { id: 'campaigns', label: 'Campaigns', icon: 'target' },
   { id: 'social', label: 'Auto-post', icon: 'share' },
@@ -36,6 +37,7 @@ export function App() {
   const snap = useStore();
   const [page, setPage] = useState<Page>('home');
   const [showRecovery, setShowRecovery] = useState(false);
+  const [moreOpen, setMoreOpen] = useState(false);
   const lastActive = useRef(Date.now());
   // Screen lock: hides everything behind the password while the agents keep working.
   const [screenLocked, setScreenLocked] = useState(false);
@@ -88,10 +90,10 @@ export function App() {
   const current = working.find((v) => v.status === 'rendering');
   return (
     <div className="shell">
-      <nav className="side" aria-label="Main">
+      <nav className={'side' + (moreOpen ? ' more-open' : '')} aria-label="Main">
         <div className="logo"><span className="logo-mark"><Icon name="bolt" /></span>Marketing Studio</div>
         {NAV.map((n) => (
-          <button key={n.id} className={'nav' + (page === n.id ? ' on' : '')} onClick={() => setPage(n.id)} aria-current={page === n.id ? 'page' : undefined}>
+          <button key={n.id} className={'nav' + (n.main ? '' : ' extra') + (page === n.id ? ' on' : '')} onClick={() => { setPage(n.id); setMoreOpen(false); }} aria-current={page === n.id ? 'page' : undefined}>
             <Icon name={n.icon} />
             <span>{n.label}</span>
             {n.id === 'approvals' && counts.total > 0 && <span className="count">{counts.total}</span>}
@@ -104,7 +106,10 @@ export function App() {
             <div className="bar" style={{ marginTop: 6 }}><i style={{ width: `${Math.round((current?.progress ?? 0) * 100)}%` }} /></div>
           </div>
         )}
-        <button className="nav" onClick={doLock}><Icon name="lock" /><span>Lock</span></button>
+        <button className="nav extra" onClick={() => { setMoreOpen(false); doLock(); }}><Icon name="lock" /><span>Lock</span></button>
+        <button className={'nav more' + (moreOpen || !NAV.find((n) => n.id === page)?.main ? ' on' : '')} onClick={() => setMoreOpen(!moreOpen)} aria-expanded={moreOpen} aria-label="More pages">
+          <Icon name="settings" /><span>More</span>
+        </button>
       </nav>
       <main className="main">
         <div className="page">
