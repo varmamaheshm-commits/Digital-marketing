@@ -1,0 +1,67 @@
+{
+  "name": "Marketing Studio: react to video events",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "marketing-studio", "responseMode": "onReceived", "options": {} },
+      "id": "2c0f1f3e-0001-4000-8000-000000000001",
+      "name": "Event from Marketing Studio",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "marketing-studio-events"
+    },
+    {
+      "parameters": {
+        "rules": {
+          "values": [
+            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict" }, "combinator": "and", "conditions": [{ "leftValue": "={{ $json.body.event }}", "rightValue": "video.ready", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "ready for approval" },
+            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict" }, "combinator": "and", "conditions": [{ "leftValue": "={{ $json.body.event }}", "rightValue": "video.posted", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "posted" },
+            { "conditions": { "options": { "caseSensitive": true, "typeValidation": "strict" }, "combinator": "and", "conditions": [{ "leftValue": "={{ $json.body.event }}", "rightValue": "video.post_failed", "operator": { "type": "string", "operation": "equals" } }] }, "renameOutput": true, "outputKey": "posting failed" }
+          ]
+        },
+        "options": {}
+      },
+      "id": "2c0f1f3e-0002-4000-8000-000000000002",
+      "name": "Which event?",
+      "type": "n8n-nodes-base.switch",
+      "typeVersion": 3.2,
+      "position": [480, 300]
+    },
+    {
+      "parameters": { "assignments": { "assignments": [{ "id": "a1", "name": "message", "value": "=A new {{ $json.body.data.product }} video is waiting for your approval.", "type": "string" }] }, "options": {} },
+      "id": "2c0f1f3e-0003-4000-8000-000000000003",
+      "name": "Message: please approve",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [740, 160]
+    },
+    {
+      "parameters": { "assignments": { "assignments": [{ "id": "a2", "name": "message", "value": "={{ $json.body.data.product }} was posted to {{ $json.body.data.platform }}: {{ $json.body.data.url }}", "type": "string" }] }, "options": {} },
+      "id": "2c0f1f3e-0004-4000-8000-000000000004",
+      "name": "Message: posted",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [740, 300]
+    },
+    {
+      "parameters": { "assignments": { "assignments": [{ "id": "a3", "name": "message", "value": "=Posting {{ $json.body.data.product }} to {{ $json.body.data.platform }} failed: {{ $json.body.data.reason }}", "type": "string" }] }, "options": {} },
+      "id": "2c0f1f3e-0005-4000-8000-000000000005",
+      "name": "Message: posting failed",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [740, 440]
+    }
+  ],
+  "connections": {
+    "Event from Marketing Studio": { "main": [[{ "node": "Which event?", "type": "main", "index": 0 }]] },
+    "Which event?": {
+      "main": [
+        [{ "node": "Message: please approve", "type": "main", "index": 0 }],
+        [{ "node": "Message: posted", "type": "main", "index": 0 }],
+        [{ "node": "Message: posting failed", "type": "main", "index": 0 }]
+      ]
+    }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

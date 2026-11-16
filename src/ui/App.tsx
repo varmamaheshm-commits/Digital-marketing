@@ -1,7 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { pendingCounts, runAutopilot } from '../core/actions';
 import { lock, useStore, verifyPassword } from '../core/store';
+import { desktopLink } from '../core/events';
+import { handleLink } from '../core/link';
 import { Agents } from './Agents';
+import { LinkPage, type LinkState } from './Link';
 import { recoverPublications } from '../core/publisher';
 import { isRendering, pumpQueue, recoverInterrupted } from '../video/queue';
 import { Social } from './Social';
@@ -17,7 +20,7 @@ import { Products } from './Products';
 import { SettingsPage } from './Settings';
 import { Videos } from './Videos';
 
-export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'content' | 'leads' | 'knowledge' | 'campaigns' | 'social' | 'agents' | 'settings';
+export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'content' | 'leads' | 'knowledge' | 'campaigns' | 'social' | 'link' | 'agents' | 'settings';
 /** `main` items stay on the phone's bottom bar; the rest open from its More button. */
 const NAV: { id: Page; label: string; icon: string; main?: boolean }[] = [
   { id: 'home', label: 'Dashboard', icon: 'home', main: true },
@@ -29,6 +32,7 @@ const NAV: { id: Page; label: string; icon: string; main?: boolean }[] = [
   { id: 'knowledge', label: 'Knowledge', icon: 'book' },
   { id: 'campaigns', label: 'Campaigns', icon: 'target' },
   { id: 'social', label: 'Auto-post', icon: 'share' },
+  { id: 'link', label: 'Phone & automation', icon: 'users' },
   { id: 'agents', label: 'AI agents', icon: 'bolt' },
   { id: 'settings', label: 'Settings', icon: 'settings' },
 ];
@@ -58,6 +62,23 @@ export function App() {
     const t = setInterval(() => void runAutopilot(), 10 * 60_000);
     return () => clearInterval(t);
   }, [unlocked]);
+
+  // Phone link: runs while the vault is unlocked (also behind the screen lock) and the owner switched it on.
+  const [linkState, setLinkState] = useState<LinkState>({ running: false, port: 53683, addresses: [], error: '' });
+  const linkOn = snap.status === 'unlocked' && snap.settings.link.enabled && !!snap.settings.link.code;
+  const linkCode = snap.settings.link.code;
+  const linkPort = snap.settings.link.port;
+  useEffect(() => {
+    const bridge = desktopLink();
+    if (!bridge) return;
+    if (!linkOn) { void bridge.stop(); setLinkState((s) => ({ ...s, running: false, error: '' })); return; }
+    let alive = true;
+    bridge.onRequest(handleLink);
+    void bridge.start({ code: linkCode, port: linkPort }).then((r) => {
+      if (alive) setLinkState({ running: r.ok, port: r.port ?? linkPort, addresses: r.addresses ?? [], error: r.ok ? '' : r.error ?? 'The phone link could not be started.' });
+    });
+    return () => { alive = false; void bridge.stop(); };
+  }, [linkOn, linkCode, linkPort]);
 
   // Auto-lock after inactivity (never in the middle of rendering a video).
   const minutes = snap.settings.security.autoLockMinutes;
@@ -122,6 +143,7 @@ export function App() {
           {page === 'knowledge' && <Knowledge />}
           {page === 'campaigns' && <Campaigns />}
           {page === 'social' && <Social />}
+          {page === 'link' && <LinkPage state={linkState} />}
           {page === 'agents' && <Agents />}
           {page === 'settings' && <SettingsPage />}
         </div>

@@ -197,6 +197,8 @@ export interface Settings {
   security: { autoLockMinutes: number; keepWorking: boolean };
   /** AI agents, powered by a language model running on the owner's own PC. */
   ai: { enabled: boolean; model: string; agents: { scripts: boolean; posts: boolean; leads: boolean; answers: boolean } };
+  /** Phone link and automation API served by the desktop app on the local network. */
+  link: { enabled: boolean; code: string; port: number; webhookUrl: string };
 }
 
 export interface Collections {
@@ -234,6 +236,7 @@ export const DEFAULT_SETTINGS: Settings = {
   },
   security: { autoLockMinutes: 10, keepWorking: false },
   ai: { enabled: false, model: '', agents: { scripts: true, posts: true, leads: true, answers: true } },
+  link: { enabled: false, code: '', port: 53683, webhookUrl: '' },
 };
 
 export const FORMAT_INFO: Record<VideoFormat, { label: string; w: number; h: number; use: string }> = {

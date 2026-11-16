@@ -55,6 +55,7 @@ function mergeSettings(s?: Partial<Settings>): Settings {
     autopilot: { ...d.autopilot, ...s.autopilot },
     security: { ...d.security, ...s.security },
     ai: { ...d.ai, ...s.ai, agents: { ...d.ai.agents, ...s.ai?.agents } },
+    link: { ...d.link, ...s.link },
   };
 }
 

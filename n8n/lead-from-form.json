@@ -1,0 +1,37 @@
+{
+  "name": "Marketing Studio: new lead from a form",
+  "nodes": [
+    {
+      "parameters": { "httpMethod": "POST", "path": "new-lead", "responseMode": "lastNode", "options": {} },
+      "id": "1b0f1f3e-0001-4000-8000-000000000001",
+      "name": "Form or website sends a lead",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [240, 300],
+      "webhookId": "marketing-studio-new-lead"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "http://127.0.0.1:53683/api/leads",
+        "authentication": "genericCredentialType",
+        "genericAuthType": "httpHeaderAuth",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ name: $json.body.name, phone: $json.body.phone, email: $json.body.email, source: $json.body.source || 'website form', product: $json.body.product, notes: $json.body.message, consent: $json.body.consent === true }) }}",
+        "options": {}
+      },
+      "id": "1b0f1f3e-0002-4000-8000-000000000002",
+      "name": "Add the lead to Marketing Studio",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [500, 300],
+      "notes": "Open this node and create a 'Header Auth' credential: Name = Authorization, Value = the word Bearer, a space, then your pairing code from Marketing Studio."
+    }
+  ],
+  "connections": {
+    "Form or website sends a lead": { "main": [[{ "node": "Add the lead to Marketing Studio", "type": "main", "index": 0 }]] }
+  },
+  "active": false,
+  "settings": { "executionOrder": "v1" }
+}

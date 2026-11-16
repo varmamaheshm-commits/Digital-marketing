@@ -5,6 +5,7 @@ import { aiModels } from './ai';
 import { newVideo, planAutopilot } from './autopilot';
 import { buildCopy, buildLeadMessage } from './copy';
 import { scoreLead } from './leads';
+import { emitEvent } from './events';
 import { runPublisher } from './publisher';
 import { delBlob, getOne, getSnapshot, log, patch, put, putBlob, remove } from './store';
 import { uid, type Lang, type Lead, type Message, type MusicMood, type Platform, type Post, type Video, type VideoFormat, type VideoStyle } from './types';
@@ -81,6 +82,7 @@ export async function decideVideo(id: string, approve: boolean, note = '') {
   if (!v) return;
   await patch('videos', id, { status: approve ? 'approved' : 'rejected', decidedAt: Date.now(), note });
   await log('owner', `${approve ? 'Approved' : 'Rejected'} video for ${name(v.productId)} (${v.format}).`);
+  emitEvent(approve ? 'video.approved' : 'video.rejected', { videoId: id, product: name(v.productId), shape: v.format });
   if (approve) void runPublisher();
 }
 /** Renders the same video again (after script edits) or a fresh variation. */
@@ -166,7 +168,10 @@ export async function decidePost(id: string, approve: boolean) {
 
 // ----- leads -----
 export async function saveLead(lead: Lead) {
+  const isNew = !getOne('leads', lead.id);
   await put('leads', { ...lead, score: scoreLead(lead) });
+  // Contact details stay on the PC: the event carries no name, phone or email.
+  if (isNew) emitEvent('lead.created', { leadId: lead.id, source: lead.source, product: lead.productId ? name(lead.productId) : '', consent: lead.consent });
 }
 export async function deleteLead(id: string) {
   for (const m of getSnapshot().data.messages.filter((m) => m.leadId === id)) await remove('messages', m.id);

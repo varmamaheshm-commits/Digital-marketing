@@ -12,7 +12,7 @@ const OUT = path.join(__dirname, '..', 'test-output', 'responsive');
 fs.mkdirSync(OUT, { recursive: true });
 const PW = 'blue-Tiger-2026!';
 const SIZES = [['phone', 390, 800], ['tablet', 820, 1180], ['pc', 1280, 860]];
-const PAGES = ['Dashboard', 'Approvals', 'Products', 'Videos', 'Content', 'Leads', 'Knowledge', 'Campaigns', 'Auto-post', 'AI agents', 'Settings'];
+const PAGES = ['Dashboard', 'Approvals', 'Products', 'Videos', 'Content', 'Leads', 'Knowledge', 'Campaigns', 'Auto-post', 'Phone & automation', 'AI agents', 'Settings'];
 // [page, button that opens the dialog]
 const DIALOGS = [['Products', 'Add product'], ['Videos', 'Upload my video'], ['Videos', 'Create video'], ['Content', 'Write a post'], ['Leads', 'Add lead'], ['Knowledge', 'Add document'], ['Campaigns', 'New campaign'], ['Auto-post', 'Connect YouTube'], ['Auto-post', 'Connect Instagram + Facebook']];
 
@@ -109,7 +109,7 @@ const DIALOGS = [['Products', 'Add product'], ['Videos', 'Upload my video'], ['V
     if (bar.visible.join(',') !== 'Dashboard,Approvals,Videos,Leads,More') problems.push('phone: unexpected bottom bar: ' + bar.visible.join(','));
     await page.getByRole('button', { name: 'More pages' }).click();
     const sheet = await page.evaluate(() => [...document.querySelectorAll('.side .nav.extra')].filter((n) => { const b = n.getBoundingClientRect(); return b.width > 0 && b.top >= 0 && b.bottom <= window.innerHeight; }).length);
-    if (sheet !== 8) problems.push(`phone: More menu shows ${sheet} of 8 entries on screen`);
+    if (sheet !== 9) problems.push(`phone: More menu shows ${sheet} of 9 entries on screen`);
     await page.screenshot({ path: path.join(OUT, 'phone-more-menu.png') });
     console.log(`  phone navigation: ${bar.visible.join(' · ')}; More menu lists ${sheet} further entries`);
   } finally {

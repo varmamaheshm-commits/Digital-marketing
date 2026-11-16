@@ -3,6 +3,7 @@
  * The actual upload happens in the desktop app's main process (see electron/publish.cjs);
  * this module decides what to post, keeps the record, and never sends an unapproved video.
  */
+import { emitEvent } from './events';
 import type { Data } from './store';
 import { getBlob, getOne, getSnapshot, log, patch, put } from './store';
 import { TARGET_INFO, uid, type Publication, type Settings, type SocialAccount, type SocialProvider, type SocialTarget, type Video } from './types';
@@ -109,7 +110,9 @@ export async function runPublisher(): Promise<void> {
       if (res.ok) {
         await patch('publications', job.id, { status: 'posted', url: res.url, postedAt: Date.now(), attempts: job.attempts + 1, error: undefined });
         await log('auto', `Publisher agent posted the ${product?.name ?? ''} video to ${label}.`);
+        emitEvent('video.posted', { videoId: v.id, product: product?.name ?? '', platform: label, url: res.url ?? '' });
       } else {
+        emitEvent('video.post_failed', { videoId: v.id, product: product?.name ?? '', platform: label, reason: res.error ?? '' });
         await fail(res.error ?? 'Unknown error.', res.retryable === true);
         await log('auto', `Posting to ${label} failed: ${res.error ?? 'unknown error'}`);
       }

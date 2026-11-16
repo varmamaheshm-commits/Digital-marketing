@@ -9,6 +9,7 @@ const path = require('path');
 const fs = require('fs');
 const { pathToFileURL } = require('url');
 const social = require('./publish.cjs');
+const link = require('./link.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 const ORIGIN = 'app://studio';
@@ -128,6 +129,43 @@ app.whenReady().then(() => {
       return { ok: false, error: String(err?.message ?? err).slice(0, 500) };
     }
   });
+  // ---- phone link and automation API: a local-network server whose requests are answered by the unlocked app ----
+  let linkServer = null;
+  let linkSeq = 0;
+  const linkWaiting = new Map();
+  ipcMain.on('link:reply', (e, id, reply) => {
+    if (!fromApp(e)) return;
+    const done = linkWaiting.get(id);
+    if (done) { linkWaiting.delete(id); done(reply); }
+  });
+  const askApp = (req) => new Promise((resolve) => {
+    const win = mainWindow;
+    if (!win || win.isDestroyed()) return resolve({ status: 503, json: { error: 'Marketing Studio is not running on the PC.' } });
+    const id = ++linkSeq;
+    const timer = setTimeout(() => { linkWaiting.delete(id); resolve({ status: 504, json: { error: 'The PC took too long to answer.' } }); }, 30_000);
+    linkWaiting.set(id, (reply) => { clearTimeout(timer); resolve(reply); });
+    win.webContents.send('link:request', id, req);
+  });
+  const stopLink = async () => { if (linkServer) { const s = linkServer; linkServer = null; await s.close(); } };
+  ipcMain.handle('link:start', async (e, cfg) => {
+    if (!fromApp(e)) return { ok: false, error: 'Not allowed.' };
+    await stopLink();
+    const code = link.normalizeCode(cfg?.code);
+    if (code.length < 16) return { ok: false, error: 'The pairing code is too short.' };
+    const port = Number.isInteger(cfg?.port) && cfg.port >= 1024 && cfg.port <= 65535 ? cfg.port : link.DEFAULT_PORT;
+    const server = link.createLinkServer({ code, handle: askApp });
+    try {
+      await server.listen(port);
+      linkServer = server;
+      return { ok: true, port, addresses: link.lanAddresses() };
+    } catch (err) {
+      return { ok: false, error: err?.code === 'EADDRINUSE' ? `Port ${port} is already used by another program on this PC.` : 'The phone link could not be started.' };
+    }
+  });
+  ipcMain.handle('link:stop', async (e) => { if (fromApp(e)) await stopLink(); });
+  ipcMain.handle('link:notify', (e, url, signingKey, event, data) => (fromApp(e) ? link.notify(url, signingKey, String(event), data) : { ok: false, error: 'Not allowed.' }));
+  app.on('before-quit', () => { void stopLink(); });
+
   ipcMain.handle('social:publish', (e, target, account, job) => {
     if (!fromApp(e)) return { ok: false, error: 'Not allowed.' };
     return social.publish(String(target), account, job, deps);

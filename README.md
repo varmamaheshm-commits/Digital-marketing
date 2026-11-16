@@ -126,12 +126,51 @@ sign-in result to the app on your PC (fixed destination, stores nothing). Host i
 
 Any other https website you control works the same way: upload the same file there.
 
-## Not built yet — and what each needs from you
+## Phone link: approve from your phone, the PC posts
+
+On the PC app open **Phone & automation** and tick *Let my phone and tablet approve videos on this PC*.
+The page shows an address (for example `http://192.168.1.20:53683`) and a pairing code.
+
+1. Connect the phone or tablet to the same Wi-Fi as the PC.
+2. Open the address in the phone's browser and enter the pairing code once.
+3. Videos waiting for approval appear with a player, the caption, and Approve / Reject buttons.
+   Approving there is the same as approving on the PC: the Publisher agent posts it.
+
+It works in any phone browser (Android, iPhone, iPad); nothing needs installing on the phone.
+The first time, Windows may ask whether to allow Marketing Studio on the network: choose
+**Private networks**.
+
+What the link can and cannot do: it lists videos waiting for approval, plays them, approves or
+rejects them, and accepts a new lead. It cannot read your leads, change settings or export data.
+It answers only devices on the same local network, only with the pairing code, locks an address
+out after five wrong codes, and stops when the app is locked. The connection inside your network
+is not encrypted, so use it on a Wi-Fi you trust; it does not work from outside your network.
+
+## Automation with n8n (or any tool that can call a web address)
+
+The same page connects automation tools.
+
+- **Into the app:** `POST http://127.0.0.1:53683/api/leads` with header
+  `Authorization: Bearer <pairing code>` adds a lead (from a website form, an ad form, a chat tool…).
+  Also available: `GET /api/status`, `GET /api/approvals`, `POST /api/videos/<id>/approve|reject`.
+- **Out of the app:** enter a webhook address and the app sends an event when a video is ready,
+  approved, rejected, posted or failed to post, and when a lead is created. Events carry product
+  names, platforms and links, never a lead's name, phone or email, and are signed
+  (`X-Marketing-Studio-Signature`, HMAC-SHA-256 with the pairing code).
+
+Two ready-made workflows are in `n8n/` (in n8n: *Import from file*):
+`lead-from-form.json` (a form posts to n8n, n8n adds the lead; store the pairing code in an n8n
+*Header Auth* credential as described in the node's note) and `video-events.json` (routes the
+events so you can attach a notification of your choice). They were written against n8n's node
+format but have not been run in n8n, so check them after importing.
+
+## Not built yet, and what each needs from you
 
 | Wanted | Status | What is needed |
 | --- | --- | --- |
 | **You or your staff as a talking presenter, lip-synced, in several languages** | Not built | A PC with a strong NVIDIA graphics card (about 12 GB video memory or more) to run open-source voice and lip-sync models; a short, well-lit recording and voice sample of each presenter, with their written consent. It could not be built or tested in the environment this app was developed in (no graphics card, model downloads blocked). |
-| **Phones and tablets controlling the always-on PC** | Not built | Today each device runs its own copy. A secure link from phone to PC is a further stage. |
+| **Using the phone link away from home or the office** | Not built | The link works on the same Wi-Fi only. Reaching the PC from anywhere needs an encrypted tunnel or a hosted relay. |
+| **Voice-over** | Not built | A speech engine on the PC; to be built and tested on Windows. |
 | **Automatic translation of your product text** | Partly | Works through the Script writer agent once the AI engine is installed; without it only the fixed phrases are translated. |
 
 ## What works on which device
@@ -142,12 +181,12 @@ Any other https website you control works the same way: upload the same file the
 | Products, leads, campaigns, knowledge base, content calendar | Yes | Yes | Yes |
 | Create videos from product photos | Yes | Yes, slower | Depends on the iOS version |
 | Upload your own videos, approve, save / share by hand | Yes | Yes | Yes |
-| Automatic posting to social platforms | **Yes** | No — approve on the PC | No — approve on the PC |
+| Automatic posting to social platforms | **Yes** | Approve in the phone's browser over the phone link; the PC posts | Same, over the phone link |
 | Always-on background work | **Yes** (tray, starts with the PC) | Only while the app is open | Only while the app is open |
 | AI writing agents (local model) | Yes, if a model is installed | No | No |
 
 Each device keeps its own encrypted copy of the data; move it with *Settings → Backup & restore*.
-A phone cannot yet control the PC's copy. The layout is checked automatically at phone (390 px),
+A phone on the same Wi-Fi can approve the PC's videos through the phone link. The layout is checked automatically at phone (390 px),
 tablet (820 px) and PC (1280 px) sizes by `tests/responsive.cjs`.
 
 ## Install

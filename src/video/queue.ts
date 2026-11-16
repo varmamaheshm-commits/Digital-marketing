@@ -2,6 +2,7 @@
 import { delBlob, getBlob, getOne, getSnapshot, log, patch, patchVolatile, putBlob } from '../core/store';
 import { agentModel } from '../core/actions';
 import { aiScript } from '../core/agents';
+import { emitEvent } from '../core/events';
 import { renderVideo } from './render';
 
 let running = false;
@@ -57,6 +58,7 @@ export async function pumpQueue() {
           seconds: res.seconds, sizeBytes: res.data.byteLength,
         });
         await log('auto', `Video ready for approval: ${product.name} (${next.format}).`);
+        emitEvent('video.ready', { videoId: next.id, product: product.name, shape: next.format });
       } catch (e: any) {
         if (getSnapshot().status !== 'unlocked') break;
         if (!getOne('videos', next.id)) continue;
