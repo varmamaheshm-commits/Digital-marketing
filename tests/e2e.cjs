@@ -168,7 +168,7 @@ const mockAi = require('http').createServer((req, res) => {
     await page.getByRole('button', { name: 'Create', exact: true }).click();
     await page.getByRole('button', { name: 'Review' }).waitFor({ timeout: 300000 });
     await page.getByRole('button', { name: 'Review' }).click();
-    assert((await page.locator('.modal input').first().inputValue()) === 'Glow like never before', 'script writer agent wrote the video script, and the video still waits for approval');
+    assert((await page.getByTestId('scene-text').first().inputValue()) === 'Glow like never before', 'script writer agent wrote the video script, and the video still waits for approval');
     await page.getByRole('button', { name: 'Close' }).click();
     await page.getByRole('button', { name: 'AI agents', exact: true }).click();
     await page.screenshot({ path: path.join(OUT, '14-agents.png'), fullPage: true });
@@ -212,7 +212,7 @@ const mockAi = require('http').createServer((req, res) => {
     await page.getByTestId('upload-video').click();
     await page.getByTestId('upload-file').setInputFiles(path.join(OUT, 'Glow-Serum-wide.mp4'));
     await page.getByTestId('upload-info').waitFor({ timeout: 30000 });
-    assert(/1920×1080 · 19 seconds/.test(await page.getByTestId('upload-info').innerText()), 'an uploaded recording is read: size, length and shape detected');
+    assert(/1920×1080 · \d+ seconds/.test(await page.getByTestId('upload-info').innerText()), 'an uploaded recording is read: size, length and shape detected');
     const before = await page.evaluate(() => window.__published.length);
     await page.getByTestId('upload-save').click();
     await page.getByTestId('approve-video').waitFor({ timeout: 60000 });

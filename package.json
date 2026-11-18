@@ -17,7 +17,8 @@
     "dist:linux": "npm run build && electron-builder --linux --publish never",
     "dist:mac": "npm run build && electron-builder --mac --publish never",
     "android:sync": "npm run build && cap sync android",
-    "test:e2e": "npm run build && node tests/e2e.cjs"
+    "test:e2e": "npm run build && node tests/e2e.cjs",
+    "build:site": "npm run build && rm -rf docs/app && cp -r dist docs/app"
   },
   "build": {
     "appId": "com.marketingstudio.app",

@@ -65,6 +65,14 @@ describe('copywriter', () => {
     expect(a.find((s) => s.kind === 'offer')!.text).toBe('₹499');
     expect(buildScript(product, DEFAULT_SETTINGS, 7)).toEqual(a);
   });
+  it('stretches a script to the chosen length, never past 30 seconds', () => {
+    for (const n of [10, 20, 30, 45]) {
+      const sc = buildScript(product, DEFAULT_SETTINGS, 7, 'en', n);
+      const total = sc.reduce((a, x) => a + x.seconds, 0);
+      expect(Math.abs(total - Math.min(30, n))).toBeLessThan(0.05);
+      expect(sc.every((x) => x.seconds >= 1.8)).toBe(true);
+    }
+  });
   it('still works for a product with only a name', () => {
     const bare = { ...product, description: '', price: '', offer: '', features: [], audience: '' };
     const s = buildScript(bare, DEFAULT_SETTINGS, 1);

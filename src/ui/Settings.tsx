@@ -3,7 +3,7 @@ import { passwordStrength } from '../core/crypto';
 import { saveFile } from '../core/files';
 import { exportBackup, importBackup, lock, saveSettings, updatePassword, useStore, wipeEverything } from '../core/store';
 import type { Lang, Settings, VideoFormat } from '../core/types';
-import { FORMAT_INFO, LANG_NAMES } from '../core/types';
+import { FORMAT_INFO, LANG_NAMES, PRESENTER_NAMES, type Presenter } from '../core/types';
 import { Field, fmtDateTime, Icon, toast } from './common';
 import { Strength } from './Gate';
 
@@ -93,6 +93,9 @@ export function SettingsPage() {
             <Field label="Music">
               <select value={s.autopilot.mood} onChange={(e) => auto({ mood: e.target.value as any })}><option value="auto">Automatic</option><option value="upbeat">Upbeat</option><option value="chill">Chill</option><option value="cinematic">Cinematic</option><option value="none">No music</option></select>
             </Field>
+            <Field label="Video length"><select value={s.autopilot.videoSeconds} onChange={(e) => auto({ videoSeconds: Number(e.target.value) })}>{[10, 15, 20, 25, 30].map((n) => <option key={n} value={n}>{n} seconds</option>)}</select></Field>
+            <Field label="Presenter in videos"><select value={s.autopilot.presenter} onChange={(e) => auto({ presenter: e.target.value as Presenter })}>{(Object.keys(PRESENTER_NAMES) as Presenter[]).map((k) => <option key={k} value={k}>{PRESENTER_NAMES[k]}</option>)}</select></Field>
+            <label className="check full"><input type="checkbox" checked={s.autopilot.voice} onChange={(e) => auto({ voice: e.target.checked })} /> Voice-over in videos (desktop app; uses the voices installed on this PC)</label>
             <Field label="New video every (days)"><input type="number" min={1} max={90} value={s.autopilot.videoRefreshDays} onChange={(e) => auto({ videoRefreshDays: Math.max(1, Number(e.target.value) || 14) })} /></Field>
             <Field label="Posts per week"><input type="number" min={0} max={21} value={s.autopilot.postsPerWeek} onChange={(e) => auto({ postsPerWeek: Math.max(0, Math.min(21, Number(e.target.value) || 0)) })} /></Field>
             <Field label="Follow up leads after (days)"><input type="number" min={1} max={30} value={s.autopilot.followUpDays} onChange={(e) => auto({ followUpDays: Math.max(1, Number(e.target.value) || 3) })} /></Field>

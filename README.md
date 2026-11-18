@@ -29,6 +29,30 @@ you approve it. Posts and lead messages are approved automatically by default �
 fixed phrases (opening line, call-to-action, offer labels) are translated; the product name,
 description and selling points appear exactly as you typed them.
 
+## Videos: length, animated presenter and voice-over
+
+- **Length:** 10 to 30 seconds (*Settings → Autopilot → Video length*, or per video). Short videos
+  keep fewer selling points so every scene can still be read.
+- **Animated presenter:** a drawn host (Asha or Ravi) appears in the top corner, blinks, waves on the
+  opening and closing scenes and moves their mouth while speaking. It is drawn by the app itself: an
+  animated character, not a filmed person.
+- **Voice-over (desktop app):** each scene's words are spoken by the speech engine built into the
+  computer (Windows: *Settings → Time & language → Speech*; add Hindi, Telugu or Tamil voices there
+  for those languages). The mouth follows the voice, scenes are lengthened when a line needs more
+  time, and the music is turned down under the voice. Without an installed voice the video is made
+  without one and says so.
+- **Changing a video:** on its review panel you can edit every line, the look, music, length,
+  presenter and voice, then press **Re-create video**. Approve is blocked while changes are not yet
+  in the video.
+
+## Use it in a browser
+
+The GitHub Pages site serves the app under `app/` (for this repository:
+`varmamaheshm-commits.github.io/Digital-marketing/app/`). Refresh it with `npm run build:site` and
+push. In Chrome or Edge use *Install app* in the address bar to get an icon. The browser copy keeps
+its own encrypted data; automatic posting, the phone link and voice-over need the desktop app. The
+desktop installer creates a desktop and Start-menu icon.
+
 ## Upload your own videos
 
 *Videos → Upload my video.* Record on a phone or camera, choose the product it is about, and

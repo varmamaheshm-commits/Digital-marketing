@@ -6,6 +6,8 @@ import { ArrayBufferTarget, Muxer } from 'mp4-muxer';
 import { FORMAT_INFO, type Settings, type Video } from '../core/types';
 import { buildComp, drawFrame, type Img } from './draw';
 import { SAMPLE_RATE, synthMusic } from './music';
+import { speakingEnvelope } from './presenter';
+import { mixAudio, speakScenes } from './voice';
 
 export interface RenderResult {
   data: ArrayBuffer;
@@ -102,7 +104,11 @@ export async function renderVideo(
   await Promise.all(
     ['Noto Sans Devanagari', 'Noto Sans Telugu', 'Noto Sans Tamil'].map((f) => document.fonts?.load(`700 40px "${f}"`, text).catch(() => [])),
   );
-  const comp = buildComp(video, images, settings);
+  // Voice-over (desktop app) and the presenter's mouth movement.
+  const spoken = video.voice ? await speakScenes(video, settings).catch(() => null) : null;
+  if (spoken) video = { ...video, script: spoken.script };
+  const mouth = spoken?.envelope ?? (video.presenter && video.presenter !== 'none' ? speakingEnvelope(video.script, video.seed) : null);
+  const comp = buildComp(video, images, settings, { mouth });
   const fps = comp.fps;
   const total = Math.round(comp.duration * fps);
 
@@ -113,7 +119,8 @@ export async function renderVideo(
 
   const vsel = await pickVideo(w, h, w * h >= 1920 * 1080 ? 10_000_000 : 7_000_000, fps);
   if (!vsel) throw new Error('No supported video encoder was found on this device.');
-  const music = await synthMusic(video.mood, comp.duration, video.seed).catch(() => null);
+  const musicOnly = await synthMusic(video.mood, comp.duration, video.seed).catch(() => null);
+  const music = await mixAudio(musicOnly, spoken?.clips ?? [], comp.duration).catch(() => musicOnly);
   const asel = music ? await pickAudio() : null;
 
   const target = new ArrayBufferTarget();
@@ -180,7 +187,7 @@ export async function renderVideo(
     data: target.buffer,
     thumb,
     mime: 'video/mp4',
-    codec: `${vsel.mux.toUpperCase()} ${w}×${h} ${fps}fps${asel ? ' + ' + asel.mux.toUpperCase() : ' (no audio)'}`,
+    codec: `${vsel.mux.toUpperCase()} ${w}×${h} ${fps}fps${asel ? ' + ' + asel.mux.toUpperCase() : ' (no audio)'}${spoken ? ' · voice-over' : video.voice ? ' · no voice engine' : ''}`,
     seconds: comp.duration,
   };
 }

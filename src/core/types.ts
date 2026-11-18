@@ -2,6 +2,8 @@ export type VideoFormat = 'reel' | 'square' | 'wide';
 export type VideoStyle = 'bold' | 'clean' | 'luxe';
 export type Lang = 'en' | 'hi' | 'te' | 'ta';
 export const LANG_NAMES: Record<Lang, string> = { en: 'English', hi: 'हिन्दी (Hindi)', te: 'తెలుగు (Telugu)', ta: 'தமிழ் (Tamil)' };
+export type Presenter = 'none' | 'host-a' | 'host-b';
+export const PRESENTER_NAMES: Record<Presenter, string> = { none: 'No presenter', 'host-a': 'Animated host - Asha', 'host-b': 'Animated host - Ravi' };
 export type MusicMood = 'upbeat' | 'chill' | 'cinematic' | 'none';
 /** Everything the app creates automatically waits in `pending` until the owner decides. */
 export type ApprovalStatus = 'pending' | 'approved' | 'rejected';
@@ -38,6 +40,11 @@ export interface Video {
   source?: 'generated' | 'upload';
   /** True once the script-writer agent has rewritten the script. */
   aiScript?: boolean;
+  /** Wanted length in seconds (10-30). The script's scene timings are stretched to it. */
+  targetSeconds?: number;
+  /** Animated on-screen host drawn by the app, and whether it speaks the script aloud. */
+  presenter?: Presenter;
+  voice?: boolean;
   style: VideoStyle;
   mood: MusicMood;
   seed: number;
@@ -191,6 +198,9 @@ export interface Settings {
     videoStyle: VideoStyle | 'auto';
     mood: MusicMood | 'auto';
     videoRefreshDays: number;
+    videoSeconds: number;
+    presenter: Presenter;
+    voice: boolean;
     postsPerWeek: number;
     followUpDays: number;
   };
@@ -231,6 +241,9 @@ export const DEFAULT_SETTINGS: Settings = {
     videoStyle: 'auto',
     mood: 'auto',
     videoRefreshDays: 14,
+    videoSeconds: 20,
+    presenter: 'host-a',
+    voice: true,
     postsPerWeek: 4,
     followUpDays: 3,
   },

@@ -4,6 +4,10 @@ const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('desktop', {
   getBackground: () => ipcRenderer.invoke('background:get'),
   setBackground: (on) => ipcRenderer.invoke('background:set', on === true),
+  voice: {
+    speak: (text, opts) => ipcRenderer.invoke('voice:speak', text, opts),
+    voices: () => ipcRenderer.invoke('voice:list'),
+  },
   link: {
     start: (cfg) => ipcRenderer.invoke('link:start', cfg),
     stop: () => ipcRenderer.invoke('link:stop'),

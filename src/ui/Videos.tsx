@@ -1,10 +1,11 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+import { fitLength } from '../core/copy';
 import { addUploadedVideo, createVideo, decideVideo, deleteVideo, rerenderVideo } from '../core/actions';
 import { inspectVideo, MAX_UPLOAD_BYTES, shapeOf, uploadMime, type VideoInfo } from '../video/upload';
 import { canShareFiles, copyText, saveFile, shareFile } from '../core/files';
 import { accountFor, desktopSocial, postNow } from '../core/publisher';
 import { getBlob, patch, useStore } from '../core/store';
-import { FORMAT_INFO, LANG_NAMES, TARGET_INFO, type Lang, type SocialTarget, type MusicMood, type Video, type VideoFormat, type VideoStyle } from '../core/types';
+import { FORMAT_INFO, LANG_NAMES, PRESENTER_NAMES, TARGET_INFO, type Lang, type Presenter, type ScriptScene, type SocialTarget, type MusicMood, type Video, type VideoFormat, type VideoStyle } from '../core/types';
 import { canRenderVideo } from '../video/render';
 import { Chip, Empty, Field, fmtDateTime, fmtSize, Icon, Modal, Picture, toast, useBlobUrl } from './common';
 
@@ -30,6 +31,9 @@ export function VideoCard({ v, onOpen }: { v: Video; onOpen: () => void }) {
   );
 }
 
+const SCENE_NAMES: Record<ScriptScene['kind'], string> = { hook: 'Opening line', reveal: 'Product', feature: 'Selling point', offer: 'Price / offer', cta: 'Call to action' };
+const optionsOf = (v?: Video) => ({ style: v?.style ?? 'bold', mood: v?.mood ?? 'upbeat', targetSeconds: v?.targetSeconds ?? Math.round(v?.script.reduce((a, s) => a + s.seconds, 0) ?? 20), presenter: v?.presenter ?? 'none', voice: v?.voice ?? false } as { style: VideoStyle; mood: MusicMood; targetSeconds: number; presenter: Presenter; voice: boolean });
+
 export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }) {
   const { data } = useStore();
   const v = data.videos.find((x) => x.id === id);
@@ -37,7 +41,16 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
   const poster = useBlobUrl(v?.thumbId, 'image/jpeg');
   const [script, setScript] = useState(v?.script ?? []);
   const [caption, setCaption] = useState(v?.caption ?? '');
+  const [opts, setOpts] = useState(optionsOf(v));
   const [dirty, setDirty] = useState(false);
+  // Keep the boxes in step with the video (after "New version" or a finished re-creation), unless the owner is mid-edit.
+  const sig = v ? JSON.stringify([v.script, v.caption, optionsOf(v)]) : '';
+  useEffect(() => {
+    if (!v || dirty) return;
+    setScript(v.script);
+    setCaption(v.caption);
+    setOpts(optionsOf(v));
+  }, [sig]); // eslint-disable-line react-hooks/exhaustive-deps
   if (!v) return null;
   const product = data.products.find((p) => p.id === v.productId);
   const uploaded = v.source === 'upload';
@@ -58,10 +71,14 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
     if (b) await shareFile(b, fileName, fullCaption).catch((e) => toast(String(e?.message ?? e)));
   }
   async function applyScript() {
-    await rerenderVideo({ ...v!, script, caption }, false);
+    // A new length re-times the scenes; text edits are kept.
+    const timed = opts.targetSeconds !== (v!.targetSeconds ?? 0) ? fitLength(script, opts.targetSeconds) : script;
+    await rerenderVideo({ ...v!, ...opts, script: timed, caption }, false);
     setDirty(false);
     toast('Re-creating the video with your changes');
   }
+  const edit = <T,>(fn: (x: T) => void) => (x: T) => { fn(x); setDirty(true); };
+  const setScene = (i: number, key: 'text' | 'sub', value: string) => edit(setScript)(script.map((x, j) => (j === i ? { ...x, [key]: value } : x)));
 
   return (
     <Modal wide title={`${product?.name ?? 'Video'} — ${FORMAT_INFO[v.format].label}`} onClose={onClose}
@@ -70,7 +87,7 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
           <button className="btn danger" onClick={async () => { if (confirm('Delete this video?')) { await deleteVideo(v.id); onClose(); } }}><Icon name="trash" /> Delete</button>
           {done && !uploaded && <button className="btn" onClick={() => rerenderVideo(v, true)}><Icon name="refresh" /> New version</button>}
           {v.status === 'pending' && <button className="btn danger" data-testid="reject-video" onClick={() => decideVideo(v.id, false)}>Reject</button>}
-          {(v.status === 'pending' || v.status === 'rejected') && <button className="btn ok" data-testid="approve-video" onClick={() => decideVideo(v.id, true)}><Icon name="check" /> Approve</button>}
+          {(v.status === 'pending' || v.status === 'rejected') && <button className="btn ok" data-testid="approve-video" disabled={dirty} title={dirty ? 'Re-create the video with your changes first' : undefined} onClick={() => decideVideo(v.id, true)}><Icon name="check" /> Approve</button>}
           {v.status === 'approved' && (
             <>
               <button className="btn" onClick={async () => { await copyText(fullCaption); toast('Caption copied'); }}><Icon name="copy" /> Copy caption</button>
@@ -107,20 +124,36 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
           )}
         </div>
         <div className="stack">
-          {uploaded ? <div className="notice">This is your own recording. It is posted exactly as you uploaded it; the app wrote the caption below.</div> : <h3>Script</h3>}
+          {uploaded ? <div className="notice">This is your own recording. It is posted exactly as you uploaded it; the app wrote the caption below.</div> : (
+            <>
+              <h3>Make changes, then press “Re-create video”</h3>
+              <div className="form">
+                <Field label="Look"><select data-testid="opt-style" value={opts.style} onChange={(e) => edit(setOpts)({ ...opts, style: e.target.value as VideoStyle })}><option value="bold">Bold</option><option value="clean">Clean</option><option value="luxe">Luxury</option></select></Field>
+                <Field label="Music"><select value={opts.mood} onChange={(e) => edit(setOpts)({ ...opts, mood: e.target.value as MusicMood })}><option value="upbeat">Upbeat</option><option value="chill">Chill</option><option value="cinematic">Cinematic</option><option value="none">No music</option></select></Field>
+                <Field label="Length"><select data-testid="opt-length" value={opts.targetSeconds} onChange={(e) => edit(setOpts)({ ...opts, targetSeconds: Number(e.target.value) })}>{[10, 15, 20, 25, 30].map((n) => <option key={n} value={n}>{n} seconds</option>)}</select></Field>
+                <Field label="Presenter"><select data-testid="opt-presenter" value={opts.presenter} onChange={(e) => edit(setOpts)({ ...opts, presenter: e.target.value as Presenter })}>{(Object.keys(PRESENTER_NAMES) as Presenter[]).map((k) => <option key={k} value={k}>{PRESENTER_NAMES[k]}</option>)}</select></Field>
+                <label className="check full"><input type="checkbox" checked={opts.voice} onChange={(e) => edit(setOpts)({ ...opts, voice: e.target.checked })} /> Voice-over (spoken by the computer's own voice; desktop app)</label>
+              </div>
+            </>
+          )}
           {script.map((sc, i) => (
-            <label className="field" key={i}>
-              <span style={{ textTransform: 'capitalize' }}>{sc.kind}</span>
-              <input value={sc.text} onChange={(e) => { setScript(script.map((x, j) => (j === i ? { ...x, text: e.target.value } : x))); setDirty(true); }} />
-            </label>
+            <div className="stack" key={i} style={{ gap: 6 }}>
+              <label className="field">
+                <span>{SCENE_NAMES[sc.kind]} · {sc.seconds.toFixed(1)}s</span>
+                <input data-testid="scene-text" value={sc.text} onChange={(e) => setScene(i, 'text', e.target.value)} />
+              </label>
+              {(sc.sub !== undefined || sc.kind !== 'feature') && <input aria-label={`${SCENE_NAMES[sc.kind]} second line`} placeholder="Second line (optional)" value={sc.sub ?? ''} onChange={(e) => setScene(i, 'sub', e.target.value)} />}
+            </div>
           ))}
+          {dirty && <div className="notice warn" data-testid="unsaved">You have changes that are not in the video yet. Press <b>Re-create video</b> to apply them{v.status === 'pending' ? ' before approving' : ''}.</div>}
           <Field label="Caption for the post">
-            <textarea rows={5} value={caption} onChange={(e) => { setCaption(e.target.value); setDirty(true); }} />
+            <textarea rows={5} value={caption} onChange={(e) => edit(setCaption)(e.target.value)} />
           </Field>
           <small>{v.hashtags.join(' ')}</small>
           {dirty && (
             <div className="row">
-              {!uploaded && <button className="btn primary" onClick={applyScript}>Re-create with changes</button>}
+              {!uploaded && <button className="btn primary" data-testid="recreate" onClick={applyScript}>Re-create video</button>}
+              <button className="btn" onClick={() => { setDirty(false); setScript(v.script); setCaption(v.caption); setOpts(optionsOf(v)); }}>Undo changes</button>
               <button className={'btn' + (uploaded ? ' primary' : '')} onClick={async () => { await patch('videos', v.id, { caption }); setDirty(false); toast('Caption saved'); }}>{uploaded ? 'Save caption' : 'Save caption only'}</button>
             </div>
           )}
@@ -169,9 +202,13 @@ function CreateVideo({ onClose }: { onClose: () => void }) {
   const [style, setStyle] = useState<VideoStyle | ''>('');
   const [mood, setMood] = useState<MusicMood | ''>('');
   const [lang, setLang] = useState<Lang>('en');
+  const { settings } = useStore();
+  const [seconds, setSeconds] = useState(settings.autopilot.videoSeconds);
+  const [presenter, setPresenter] = useState<Presenter>(settings.autopilot.presenter);
+  const [voice, setVoice] = useState(settings.autopilot.voice);
   return (
     <Modal title="Create a video" onClose={onClose}
-      footer={<button className="btn primary" onClick={async () => { await createVideo(productId, format, style || undefined, mood || undefined, lang); onClose(); toast('Video is being created'); }}>Create</button>}>
+      footer={<button className="btn primary" onClick={async () => { await createVideo(productId, format, style || undefined, mood || undefined, lang, { seconds, presenter, voice }); onClose(); toast('Video is being created'); }}>Create</button>}>
       <div className="form">
         <Field label="Product"><select value={productId} onChange={(e) => setProductId(e.target.value)}>{data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
         <Field label="Shape" hint={FORMAT_INFO[format].use}>
@@ -182,6 +219,9 @@ function CreateVideo({ onClose }: { onClose: () => void }) {
         <Field label="Language" hint="Fixed phrases are translated; your product text is used as you typed it.">
           <select data-testid="v-lang" value={lang} onChange={(e) => setLang(e.target.value as Lang)}>{(Object.keys(LANG_NAMES) as Lang[]).map((l) => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}</select>
         </Field>
+        <Field label="Length"><select data-testid="v-length" value={seconds} onChange={(e) => setSeconds(Number(e.target.value))}>{[10, 15, 20, 25, 30].map((n) => <option key={n} value={n}>{n} seconds</option>)}</select></Field>
+        <Field label="Presenter"><select data-testid="v-presenter" value={presenter} onChange={(e) => setPresenter(e.target.value as Presenter)}>{(Object.keys(PRESENTER_NAMES) as Presenter[]).map((k) => <option key={k} value={k}>{PRESENTER_NAMES[k]}</option>)}</select></Field>
+        <label className="check full"><input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} /> Voice-over (desktop app, uses this computer's own voices)</label>
         <Field label="Look">
           <select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)}>
             <option value="">Automatic</option><option value="bold">Bold</option><option value="clean">Clean</option><option value="luxe">Luxury</option>

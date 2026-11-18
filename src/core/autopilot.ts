@@ -6,7 +6,7 @@
 import { buildCopy, buildLeadMessage, buildScript, rng } from './copy';
 import { scoreLead } from './leads';
 import type { Data } from './store';
-import { uid, type Lang, type Message, type MusicMood, type Platform, type Post, type Product, type Settings, type Video, type VideoFormat, type VideoStyle } from './types';
+import { uid, type Lang, type Presenter, type Message, type MusicMood, type Platform, type Post, type Product, type Settings, type Video, type VideoFormat, type VideoStyle } from './types';
 
 const DAY = 86_400_000;
 const STYLES: VideoStyle[] = ['bold', 'clean', 'luxe'];
@@ -14,7 +14,8 @@ const MOOD_FOR: Record<VideoStyle, MusicMood> = { bold: 'upbeat', clean: 'chill'
 const POST_PLATFORMS: Platform[] = ['instagram', 'facebook', 'youtube', 'whatsapp', 'email', 'ad'];
 const POST_HOURS = [10, 13, 18, 20];
 
-export function newVideo(p: Product, s: Settings, format: VideoFormat, opts: { style?: VideoStyle; mood?: MusicMood; seed?: number; lang?: Lang } = {}): Video {
+export function newVideo(p: Product, s: Settings, format: VideoFormat, opts: { style?: VideoStyle; mood?: MusicMood; seed?: number; lang?: Lang; seconds?: number; presenter?: Presenter; voice?: boolean } = {}): Video {
+  const targetSeconds = Math.max(10, Math.min(30, opts.seconds ?? s.autopilot.videoSeconds ?? 20));
   const lang = opts.lang ?? 'en';
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const r = rng(seed);
@@ -23,7 +24,8 @@ export function newVideo(p: Product, s: Settings, format: VideoFormat, opts: { s
   const copy = buildCopy(p, s, format === 'wide' ? 'youtube' : 'instagram', seed);
   return {
     id: uid(), productId: p.id, format, lang, style, mood, seed,
-    script: buildScript(p, s, seed, lang),
+    script: buildScript(p, s, seed, lang, targetSeconds),
+    targetSeconds, presenter: opts.presenter ?? s.autopilot.presenter ?? 'none', voice: opts.voice ?? s.autopilot.voice ?? false,
     title: format === 'wide' ? copy.title : p.name,
     caption: copy.body, hashtags: copy.hashtags,
     status: 'queued', createdAt: Date.now(),

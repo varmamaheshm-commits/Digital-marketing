@@ -10,6 +10,7 @@ const fs = require('fs');
 const { pathToFileURL } = require('url');
 const social = require('./publish.cjs');
 const link = require('./link.cjs');
+const voice = require('./voice.cjs');
 
 const DIST = path.join(__dirname, '..', 'dist');
 const ORIGIN = 'app://studio';
@@ -165,6 +166,9 @@ app.whenReady().then(() => {
   ipcMain.handle('link:stop', async (e) => { if (fromApp(e)) await stopLink(); });
   ipcMain.handle('link:notify', (e, url, signingKey, event, data) => (fromApp(e) ? link.notify(url, signingKey, String(event), data) : { ok: false, error: 'Not allowed.' }));
   app.on('before-quit', () => { void stopLink(); });
+
+  ipcMain.handle('voice:speak', (e, text, opts) => (fromApp(e) ? voice.speak(text, opts) : { ok: false, error: 'Not allowed.' }));
+  ipcMain.handle('voice:list', (e) => (fromApp(e) ? voice.voices() : { ok: false, error: 'Not allowed.' }));
 
   ipcMain.handle('social:publish', (e, target, account, job) => {
     if (!fromApp(e)) return { ok: false, error: 'Not allowed.' };

@@ -3,7 +3,8 @@
  * so the encoder can render frame-by-frame at full quality regardless of device speed.
  */
 import { rng } from '../core/copy';
-import { FORMAT_INFO, type ScriptScene, type Settings, type Video, type VideoStyle } from '../core/types';
+import { drawPresenter } from './presenter';
+import { FORMAT_INFO, type Presenter, type ScriptScene, type Settings, type Video, type VideoStyle } from '../core/types';
 
 type Ctx = CanvasRenderingContext2D;
 export interface Img {
@@ -45,9 +46,12 @@ export interface Comp {
   business: string;
   images: Img[];
   cache: Map<string, Fit>;
+  presenter: Presenter;
+  /** Mouth openness per frame (30 per second). */
+  mouth: Float32Array | null;
 }
 
-export function buildComp(video: Video, images: Img[], s: Settings): Comp {
+export function buildComp(video: Video, images: Img[], s: Settings, extra: { mouth?: Float32Array | null } = {}): Comp {
   const { w, h } = FORMAT_INFO[video.format];
   const r = rng(video.seed ^ 0x5f3759df);
   const style = STYLES[video.style];
@@ -72,6 +76,8 @@ export function buildComp(video: Video, images: Img[], s: Settings): Comp {
     w, h, fps: 30, duration: t, scenes, style,
     primary: s.brand.primary, accent: style.accent ?? s.brand.accent,
     business: s.business.name, images, cache: new Map(),
+    presenter: video.presenter ?? 'none',
+    mouth: extra.mouth ?? null,
   };
 }
 
@@ -502,6 +508,15 @@ export function drawFrame(ctx: Ctx, c: Comp, t: number) {
     background(ctx, c, sc, lt, 1);
   }
   foreground(ctx, c, sc, lt, i === c.scenes.length - 1);
+  if (c.presenter !== 'none') {
+    const m = Math.min(c.w, c.h);
+    const r = m * (c.w > c.h ? 0.13 : 0.15);
+    // top-right corner, clear of the brand chip on the left
+    const px = c.w - r - m * 0.05, py = r + m * (c.w < c.h ? 0.11 : 0.07);
+    const mouth = c.mouth ? c.mouth[Math.min(c.mouth.length - 1, Math.round(t * 30))] : 0;
+    const wave = sc.kind === 'hook' || sc.kind === 'cta' ? Math.max(0, Math.min(1, lt / 0.6)) * Math.max(0, Math.min(1, (sc.seconds - lt) / 0.6)) : 0;
+    drawPresenter(ctx, c.presenter, px, py, r, t, mouth, wave, c.accent);
+  }
   chrome(ctx, c, t, sc);
   if (t < 0.25) { // fade from black at the very start
     ctx.fillStyle = `rgba(5,7,15,${1 - t / 0.25})`;

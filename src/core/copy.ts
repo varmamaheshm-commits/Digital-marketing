@@ -81,7 +81,7 @@ export function productFeatures(p: Product, lang: Lang = 'en'): string[] {
 
 const firstSentence = (text: string) => (text.split(/[.!?\n]/)[0] ?? '').trim();
 
-export function buildScript(p: Product, s: Settings, seed: number, lang: Lang = 'en'): ScriptScene[] {
+export function buildScript(p: Product, s: Settings, seed: number, lang: Lang = 'en', targetSeconds = 0): ScriptScene[] {
   const r = rng(seed);
   const ph = lang === 'en' ? null : PHRASES[lang];
   const vars = { name: p.name, category: p.category || 'product', business: s.business.name };
@@ -118,7 +118,23 @@ export function buildScript(p: Product, s: Settings, seed: number, lang: Lang = 
     sub: [s.business.name, s.business.phone || s.business.website].filter(Boolean).join('  ·  ') || undefined,
     seconds: 3.2,
   });
-  return scenes;
+  return targetSeconds > 0 ? fitLength(scenes, targetSeconds) : scenes;
+}
+
+/** Stretches or shrinks the scene timings so the whole video lasts `seconds` (kept between 10 and 30). */
+export function fitLength(scenes: ScriptScene[], seconds: number): ScriptScene[] {
+  const target = Math.max(10, Math.min(30, seconds));
+  // Short videos keep fewer selling points so every scene still has time to be read.
+  let kept = scenes;
+  while (kept.length * 1.8 > target && kept.filter((s) => s.kind === 'feature').length > 1) {
+    const last = kept.map((s) => s.kind).lastIndexOf('feature');
+    kept = kept.filter((_, i) => i !== last);
+  }
+  const total = kept.reduce((a, s) => a + s.seconds, 0) || 1;
+  const out = kept.map((s) => ({ ...s, seconds: Math.max(1.8, Math.round(((s.seconds * target) / total) * 10) / 10) }));
+  const diff = target - out.reduce((a, s) => a + s.seconds, 0);
+  out[out.length - 1].seconds = Math.max(1.8, Math.round((out[out.length - 1].seconds + diff) * 10) / 10);
+  return out;
 }
 
 export function buildHashtags(p: Product, s: Settings): string[] {

@@ -8,7 +8,7 @@ import { scoreLead } from './leads';
 import { emitEvent } from './events';
 import { runPublisher } from './publisher';
 import { delBlob, getOne, getSnapshot, log, patch, put, putBlob, remove } from './store';
-import { uid, type Lang, type Lead, type Message, type MusicMood, type Platform, type Post, type Video, type VideoFormat, type VideoStyle } from './types';
+import { uid, type Lang, type Lead, type Presenter, type Message, type MusicMood, type Platform, type Post, type Video, type VideoFormat, type VideoStyle } from './types';
 
 let busy = false;
 export async function runAutopilot(): Promise<{ videos: number; posts: number; messages: number }> {
@@ -71,10 +71,10 @@ const textStatus = () => (getSnapshot().settings.approvals === 'all' ? 'pending'
 const name = (productId?: string) => getOne('products', productId)?.name ?? 'product';
 
 // ----- videos -----
-export async function createVideo(productId: string, format: VideoFormat, style?: VideoStyle, mood?: MusicMood, lang?: Lang) {
+export async function createVideo(productId: string, format: VideoFormat, style?: VideoStyle, mood?: MusicMood, lang?: Lang, more: { seconds?: number; presenter?: Presenter; voice?: boolean } = {}) {
   const p = getOne('products', productId);
   if (!p) return;
-  await put('videos', newVideo(p, getSnapshot().settings, format, { style, mood, lang }));
+  await put('videos', newVideo(p, getSnapshot().settings, format, { style, mood, lang, ...more }));
   void pumpQueue();
 }
 export async function decideVideo(id: string, approve: boolean, note = '') {
@@ -93,7 +93,7 @@ export async function rerenderVideo(v: Video, fresh: boolean) {
   let next: Video = { ...v, status: 'queued', blobId: undefined, thumbId: undefined, progress: undefined, error: undefined, decidedAt: undefined, createdAt: Date.now() };
   if (fresh) {
     const p = getOne('products', v.productId);
-    if (p) next = { ...newVideo(p, getSnapshot().settings, v.format, { lang: v.lang }), id: v.id };
+    if (p) next = { ...newVideo(p, getSnapshot().settings, v.format, { lang: v.lang, style: v.style, mood: v.mood, seconds: v.targetSeconds, presenter: v.presenter, voice: v.voice }), id: v.id };
   }
   await put('videos', next);
   void pumpQueue();
