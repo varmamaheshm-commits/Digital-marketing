@@ -110,6 +110,22 @@ describe('images and text posts on the other platforms', () => {
       expect(res.error).not.toContain(key);
     }
   });
+  it('every platform and kind of post fails cleanly when the network is down, without showing the access key', async () => {
+    const key = fakeBotKey();
+    const offline = { fetch: async () => { throw new TypeError('fetch failed'); }, allowHost: () => true, sleep: async () => {} };
+    const extra = { pageId: 'PG1', pageToken: key, igUserId: 'IG1', author: 'urn:li:person:1', boardId: 'B1', userId: 'U1', chatId: '-1' };
+    let checked = 0;
+    for (const [target, kinds] of Object.entries(social.SUPPORTS) as [string, string[]][]) {
+      for (const kind of kinds) {
+        const res = await social.publish(target, { accessToken: key, expiresAt: 0, extra }, { kind, media: Buffer.alloc(10, 1), title: 't', text: 'x', tags: [], format: 'reel' }, offline);
+        expect(res, `${target} ${kind}`).toMatchObject({ ok: false, retryable: true });
+        expect(res.error, `${target} ${kind}`).toMatch(/network problem/);
+        expect(res.error).not.toContain(key);
+        checked++;
+      }
+    }
+    expect(checked).toBe(18); // YouTube 1, Instagram 2, Facebook 3, LinkedIn 3, X 3, Pinterest 1, TikTok 1, Threads 1, Telegram 3
+  });
   it('refuses what a platform cannot take, and empty posts', async () => {
     const net = fakeNet({});
     expect((await social.publish('youtube', { accessToken: 'g', expiresAt: 0, extra: {} }, { kind: 'image', media: png, title: '', text: 'x', tags: [] }, net.deps)).error).toMatch(/does not accept images/);
