@@ -1,13 +1,13 @@
 import { useState } from 'react';
 import { desktopSocial, runPublisher } from '../core/publisher';
 import { log, patch, put, remove, useStore } from '../core/store';
-import { FORMAT_INFO, TARGET_INFO, type SocialAccount, type SocialProvider, type SocialTarget, type VideoFormat } from '../core/types';
+import { FORMAT_INFO, POSTER_INFO, TARGET_INFO, type SocialAccount, type SocialProvider, type SocialTarget, type VideoFormat } from '../core/types';
 import { copyText } from '../core/files';
 import { Chip, Field, fmtDateTime, Icon, Modal, toast } from './common';
 
 const PORT = 53682;
 interface GuideStep { title: string; text: string; link?: string; linkLabel?: string; copyRedirect?: boolean }
-interface ProviderInfo { id: SocialProvider; name: string; short: string; targets: SocialTarget[]; redirect: string; idLabel: string; secretLabel: string; secretOptional?: boolean; guide: GuideStep[]; warn: string }
+interface ProviderInfo { id: SocialProvider; name: string; short: string; targets: SocialTarget[]; redirect: string; idLabel: string; secretLabel: string; secretOptional?: boolean; noBrowser?: boolean; guide: GuideStep[]; warn: string }
 const PROVIDERS: ProviderInfo[] = [
   {
     id: 'google', name: 'YouTube', short: 'Post videos and Shorts to your YouTube channel.', targets: ['youtube'], redirect: `http://127.0.0.1:${PORT}/oauth`, idLabel: 'Client ID', secretLabel: 'Client secret',
@@ -49,6 +49,44 @@ const PROVIDERS: ProviderInfo[] = [
     ],
     warn: 'X charges for posting through its connection; check that your plan allows posts with video.',
   },
+  {
+    id: 'pinterest', name: 'Pinterest', short: 'Pin your approved product images to a Pinterest board, linked to your website.', targets: ['pinterest'], redirect: `http://localhost:${PORT}/oauth`, idLabel: 'App ID', secretLabel: 'App secret key',
+    guide: [
+      { title: 'Use a business account', text: 'Your Pinterest account must be a free Business account (Pinterest → Settings → Account management → Convert to business) and have at least one board.' },
+      { title: 'Create a Pinterest app', text: 'Press Connect app / Create app, fill in the name and your website, and accept the terms.', link: 'https://developers.pinterest.com/apps/', linkLabel: 'Open Pinterest Developers' },
+      { title: 'Add the redirect address', text: 'In the app, open Configure and add the address below under Redirect URIs, then Save.', copyRedirect: true },
+      { title: 'Copy the App ID and secret key', text: 'They are on the same Configure page. New apps start with Trial access; request Standard access there so pins are public.' },
+    ],
+    warn: 'With Trial access, pins created through your app are only visible to you. Request Standard access in the Pinterest app settings.',
+  },
+  {
+    id: 'tiktok', name: 'TikTok', short: 'Post approved vertical videos to your TikTok account.', targets: ['tiktok'], redirect: `http://localhost:${PORT}/oauth`, idLabel: 'Client key', secretLabel: 'Client secret',
+    guide: [
+      { title: 'Create a TikTok app', text: 'Sign in with your TikTok account, press Manage apps → Connect an app, and fill in the name, icon, category, website and privacy page (your relay site works).', link: 'https://developers.tiktok.com/apps/', linkLabel: 'Open TikTok for Developers' },
+      { title: 'Add the products', text: 'Add “Login Kit” and “Content Posting API”. In Content Posting API switch on “Direct Post”. Tick the scopes user.info.basic and video.publish.' },
+      { title: 'Add the redirect address', text: 'TikTok only accepts https:// addresses: tick “use my relay page” below first, then paste the address shown here into Login Kit → Redirect URI.', copyRedirect: true },
+      { title: 'Copy the Client key and secret', text: 'They are at the top of the app page. Submit the app for review when you are ready to post publicly.' },
+    ],
+    warn: 'Until TikTok has reviewed your app, every video is posted as private (“only me”). Open TikTok to make it public, or submit the app for review.',
+  },
+  {
+    id: 'threads', name: 'Threads', short: 'Post your approved text posts to Threads.', targets: ['threads'], redirect: `http://localhost:${PORT}/oauth`, idLabel: 'Threads app ID', secretLabel: 'Threads app secret',
+    guide: [
+      { title: 'Create a Meta app with the Threads use case', text: 'Press Create app and choose the use case “Access the Threads API”.', link: 'https://developers.facebook.com/apps/', linkLabel: 'Open Meta for Developers' },
+      { title: 'Switch on the permissions', text: 'Under Use cases → Access the Threads API → Customize, add threads_basic and threads_content_publish.' },
+      { title: 'Add the redirect address', text: 'Threads only accepts https:// addresses: tick “use my relay page” below, then paste the address shown here into Settings → Redirect callback URLs.', copyRedirect: true },
+      { title: 'Add yourself as a tester and copy the keys', text: 'Under App roles add your Threads account as a Threads Tester and accept the invite in the Threads app (Settings → Account → Website permissions). Copy the Threads app ID and secret from the use case settings.' },
+    ],
+    warn: 'Until Meta reviews the app, only accounts with a role on the app can be connected.',
+  },
+  {
+    id: 'telegram', name: 'Telegram channel', short: 'Post videos, images and text posts to your Telegram channel. The quickest to set up: about 3 minutes.', targets: ['telegram'], redirect: '', idLabel: 'Channel', secretLabel: 'Bot token', noBrowser: true,
+    guide: [
+      { title: 'Create a bot', text: 'In Telegram, open @BotFather, send /newbot and answer its questions. It replies with a bot token that looks like 123456789:ABC… Copy it.', link: 'https://t.me/BotFather', linkLabel: 'Open @BotFather' },
+      { title: 'Make the bot a channel admin', text: 'Open your channel → Administrators → Add admin, search for your bot and allow it to post messages.' },
+    ],
+    warn: 'Anyone with the bot token can post as your bot. It is kept only in your encrypted vault; if it leaks, send /revoke to @BotFather.',
+  },
 ];
 
 /** Turns a platform's technical refusal into advice the owner can act on. */
@@ -86,7 +124,7 @@ function SetupWizard({ p, acc, onClose }: { p: ProviderInfo; acc?: SocialAccount
   const bridge = desktopSocial();
   const address = useRelay && redirect.trim() ? redirect.trim() : p.redirect;
   const relayBad = useRelay && !/^https:\/\/[^?#\s]+$/.test(redirect.trim());
-  const ready = !!clientId.trim() && (p.secretOptional || !!clientSecret.trim()) && !relayBad;
+  const ready = p.noBrowser ? !!clientSecret.trim() && !!org.trim() : !!clientId.trim() && (p.secretOptional || !!clientSecret.trim()) && !relayBad;
 
   async function connect() {
     if (!bridge) return;
@@ -96,7 +134,7 @@ function SetupWizard({ p, acc, onClose }: { p: ProviderInfo; acc?: SocialAccount
     if (!res.ok || !res.account) return setError(explain(res.error ?? 'Could not connect.', p));
     const now = Date.now();
     const targets: SocialAccount['targets'] = {};
-    for (const t of p.targets) targets[t] = acc?.targets[t] ?? { auto: true, formats: TARGET_INFO[t].formats, since: now };
+    for (const t of p.targets) targets[t] = acc?.targets[t] ?? { auto: true, formats: TARGET_INFO[t].formats, since: now, images: TARGET_INFO[t].images.length > 0, posts: TARGET_INFO[t].text };
     await put('accounts', {
       id: p.id, clientId: clientId.trim(), clientSecret: clientSecret.trim(), organizationId: org.trim() || undefined, redirectUri: useRelay ? redirect.trim() : undefined, configId: configId.trim() || undefined,
       accessToken: '', refreshToken: '', expiresAt: 0, name: '', extra: {}, ...res.account, connectedAt: now, targets,
@@ -123,12 +161,14 @@ function SetupWizard({ p, acc, onClose }: { p: ProviderInfo; acc?: SocialAccount
         <div className="card stack" style={{ boxShadow: 'none', borderColor: 'var(--brand)' }}>
           <div className="row"><span className="chip new">Step {last} of {last}</span><b>Paste them here and connect</b></div>
           <div className="form">
-            <Field label={p.idLabel}><input data-testid={'cid-' + p.id} value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" spellCheck={false} /></Field>
+            {p.noBrowser
+              ? <Field label={p.idLabel} hint="Your channel's public name, for example @mybrandoffers (or its numeric ID for a private channel)."><input data-testid={'cid-' + p.id} value={org} onChange={(e) => setOrg(e.target.value)} placeholder="@yourchannel" autoComplete="off" spellCheck={false} /></Field>
+              : <Field label={p.idLabel}><input data-testid={'cid-' + p.id} value={clientId} onChange={(e) => setClientId(e.target.value)} autoComplete="off" spellCheck={false} /></Field>}
             <Field label={p.secretLabel + (p.secretOptional ? ' (leave empty for a Native App)' : '')}><input type="password" value={clientSecret} onChange={(e) => setClientSecret(e.target.value)} autoComplete="off" /></Field>
             {p.id === 'meta' && <Field full label="Configuration ID (optional)" hint="If Meta shows “Invalid Scopes”, create a configuration under Facebook Login for Business → Configurations (see the step above) and paste its ID here."><input data-testid="config-meta" value={configId} onChange={(e) => setConfigId(e.target.value)} inputMode="numeric" autoComplete="off" /></Field>}
             {p.id === 'linkedin' && <Field label="Organization ID (only to post as your company page)" hint="Needs LinkedIn’s “Community Management API” approval. Leave empty to post as yourself."><input value={org} onChange={(e) => setOrg(e.target.value)} inputMode="numeric" /></Field>}
           </div>
-          {p.id !== 'google' && (
+          {p.id !== 'google' && !p.noBrowser && (
             <>
               <label className="check"><input data-testid={'relay-' + p.id} type="checkbox" checked={useRelay} onChange={(e) => setUseRelay(e.target.checked)} /> {p.name} asks for an address starting with https:// — use my relay page</label>
               {useRelay && (
@@ -139,7 +179,7 @@ function SetupWizard({ p, acc, onClose }: { p: ProviderInfo; acc?: SocialAccount
               {relayBad && redirect.trim() !== '' && <div className="notice bad">The relay address must start with https:// and contain no “?” or “#”.</div>}
             </>
           )}
-          <small className="muted">When you press Connect, your browser opens {p.name}’s own sign-in page. Sign in, press Allow, and come back here. Your keys are stored only in your encrypted vault.</small>
+          <small className="muted">{p.noBrowser ? 'Marketing Studio checks the bot and the channel, then posts there from now on. ' : `When you press Connect, your browser opens ${p.name}’s own sign-in page. Sign in, press Allow, and come back here. `}Your keys are stored only in your encrypted vault.</small>
           {error && <div className="notice bad" role="alert" data-testid="connect-error">{error}</div>}
           {!bridge && <div className="notice warn">Connecting works in the desktop app on your PC.</div>}
         </div>
@@ -159,7 +199,7 @@ function ProviderCard({ p, acc }: { p: ProviderInfo; acc?: SocialAccount }) {
     await remove('accounts', p.id);
     await log('security', `Disconnected ${p.name}.`);
   }
-  const setTarget = (t: SocialTarget, change: Partial<{ auto: boolean; formats: VideoFormat[] }>) => {
+  const setTarget = (t: SocialTarget, change: Partial<{ auto: boolean; formats: VideoFormat[]; images: boolean; posts: boolean }>) => {
     const cur = acc!.targets[t] ?? { auto: false, formats: TARGET_INFO[t].formats, since: Date.now() };
     // Switching auto-post on starts from now: videos approved earlier are not posted retroactively.
     const next = { ...cur, ...change, since: change.auto === true && !cur.auto ? Date.now() : cur.since };
@@ -194,14 +234,21 @@ function ProviderCard({ p, acc }: { p: ProviderInfo; acc?: SocialAccount }) {
           <div className="stack" key={t} style={{ borderTop: '1px solid var(--line)', paddingTop: 10 }}>
             <label className="check">
               <input data-testid={'auto-' + t} type="checkbox" disabled={unavailable} checked={cfg.auto && !unavailable} onChange={(e) => setTarget(t, { auto: e.target.checked })} />
-              <b>Post approved videos to {TARGET_INFO[t].label} automatically</b>
+              <b>Post to {TARGET_INFO[t].label} automatically once I approve</b>
             </label>
             {unavailable && <small className="muted">This Page has no Instagram professional account linked.</small>}
             {cfg.auto && !unavailable && (
-              <div className="row">
-                {(Object.keys(FORMAT_INFO) as VideoFormat[]).filter((f) => t !== 'instagram' || f !== 'wide').map((f) => (
+              <div className="row wrap">
+                {TARGET_INFO[t].formats.length > 0 && <small>Videos:</small>}
+                {(Object.keys(FORMAT_INFO) as VideoFormat[]).filter((f) => TARGET_INFO[t].formats.includes(f)).map((f) => (
                   <label className="check" key={f}><input type="checkbox" checked={cfg.formats.includes(f)} onChange={(e) => setTarget(t, { formats: e.target.checked ? [...cfg.formats, f] : cfg.formats.filter((x) => x !== f) })} /> {FORMAT_INFO[f].label}</label>
                 ))}
+                {TARGET_INFO[t].images.length > 0 && (
+                  <label className="check" title={TARGET_INFO[t].images.map((f) => POSTER_INFO[f].label).join(', ')}><input data-testid={'auto-images-' + t} type="checkbox" checked={!!cfg.images} onChange={(e) => setTarget(t, { images: e.target.checked })} /> Image posts</label>
+                )}
+                {TARGET_INFO[t].text && (
+                  <label className="check"><input data-testid={'auto-posts-' + t} type="checkbox" checked={!!cfg.posts} onChange={(e) => setTarget(t, { posts: e.target.checked })} /> Text posts from the calendar</label>
+                )}
               </div>
             )}
           </div>
@@ -220,11 +267,16 @@ function ProviderCard({ p, acc }: { p: ProviderInfo; acc?: SocialAccount }) {
 export function Social() {
   const { data } = useStore();
   const bridge = !!desktopSocial();
-  const productName = (videoId: string) => { const v = data.videos.find((x) => x.id === videoId); return data.products.find((p) => p.id === v?.productId)?.name ?? 'Video'; };
+  const itemName = (p: (typeof data.publications)[number]) => {
+    const kind = p.kind ?? 'video';
+    const productId = kind === 'video' ? data.videos.find((x) => x.id === p.videoId)?.productId : kind === 'image' ? data.images.find((x) => x.id === p.itemId)?.productId : data.posts.find((x) => x.id === p.itemId)?.productId;
+    const name = data.products.find((x) => x.id === productId)?.name ?? 'Item';
+    return `${name} · ${kind === 'video' ? 'video' : kind === 'image' ? 'image' : 'post'}`;
+  };
   const pubs = [...data.publications].sort((a, b) => (b.triedAt ?? b.createdAt) - (a.triedAt ?? a.createdAt));
   return (
     <>
-      <div className="head"><div className="grow"><h1>Auto-post</h1><p>Once you approve a video, the Publisher agent posts it to every platform switched on here.</p></div></div>
+      <div className="head"><div className="grow"><h1>Auto-post</h1><p>Once you approve a video, image or post, the Publisher agent posts it to every platform switched on here. Text posts go out at their scheduled time. Nothing is posted without your approval.</p></div></div>
       {!bridge && <div className="notice warn" style={{ marginBottom: 14 }}>Automatic posting runs in the desktop app on your always-on PC. On this device you can still save or share approved videos by hand.</div>}
       <div className="notice" style={{ marginBottom: 14 }}>
         Press <b>Connect</b> on a platform and follow the steps — about 10 minutes each, once. Newly connected platforms post every video you approve from then on; you can switch that off per platform.
@@ -238,11 +290,11 @@ export function Social() {
         {pubs.length > 0 && (
           <div className="table-wrap">
             <table>
-              <thead><tr><th>Video</th><th>Platform</th><th>Status</th><th>When</th><th></th></tr></thead>
+              <thead><tr><th>What</th><th>Platform</th><th>Status</th><th>When</th><th></th></tr></thead>
               <tbody>
                 {pubs.slice(0, 80).map((p) => (
                   <tr key={p.id} data-testid="pub-row">
-                    <td><b>{productName(p.videoId)}</b></td>
+                    <td><b>{itemName(p)}</b>{p.note && <div><small>{p.note}</small></div>}</td>
                     <td>{TARGET_INFO[p.target].label}</td>
                     <td><Chip status={p.status === 'posted' ? 'published' : p.status === 'posting' ? 'rendering' : p.status} />{p.error && <div><small>{p.error}</small></div>}</td>
                     <td>{fmtDateTime(p.postedAt ?? p.triedAt ?? p.createdAt)}</td>

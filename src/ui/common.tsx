@@ -21,6 +21,10 @@ const PATHS: Record<string, string> = {
   refresh: 'M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7',
   book: 'M4 4h7a3 3 0 0 1 3 3v13a2 2 0 0 0-2-2H4zM20 4h-3a3 3 0 0 0-3 3v13a2 2 0 0 1 2-2h4z',
   shield: 'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z',
+  image: 'M3 5h18v14H3zM3 16l5-5 4 4 3-3 6 6M15.5 9.5h.01',
+  search: 'M11 18a7 7 0 1 0 0-14 7 7 0 0 0 0 14zM21 21l-5-5',
+  chart: 'M4 20V10M10 20V4M16 20v-7M22 20H2',
+  magnet: 'M6 3v8a6 6 0 0 0 12 0V3M6 7h4M14 7h4M10 3v8a2 2 0 0 0 4 0V3',
 };
 export function Icon({ name, size = 18 }: { name: string; size?: number }) {
   return (

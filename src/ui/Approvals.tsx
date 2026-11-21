@@ -1,8 +1,13 @@
 import { useState } from 'react';
-import { decideMessage, decidePost, decideVideo } from '../core/actions';
+import { decideCreative, decideMessage, decidePost, decideVideo } from '../core/actions';
 import { patch, useStore } from '../core/store';
 import type { Message, Post } from '../core/types';
-import { Empty, fmtDateTime, Icon, toast } from './common';
+import { Empty, fmtDateTime, Icon, toast, useBlobUrl } from './common';
+
+function ImagePreview({ id, alt }: { id?: string; alt: string }) {
+  const url = useBlobUrl(id, 'image/png');
+  return <div className="thumb contain">{url && <img src={url} alt={alt} />}</div>;
+}
 import { VideoCard, VideoDetail } from './Videos';
 
 export function EditableText({ value, onSave }: { value: string; onSave: (v: string) => void }) {
@@ -26,7 +31,8 @@ export function Approvals() {
   const messages = data.messages.filter((m) => m.status === 'pending');
   const productName = (id: string) => data.products.find((p) => p.id === id)?.name ?? '—';
   const lead = (id: string) => data.leads.find((l) => l.id === id);
-  const nothing = videos.length + posts.length + messages.length + working.length === 0;
+  const images = data.images.filter((c) => c.status === 'pending');
+  const nothing = videos.length + posts.length + messages.length + working.length + images.length === 0;
 
   async function approveAll(kind: 'posts' | 'messages') {
     if (!confirm(`Approve all ${kind === 'posts' ? posts.length + ' posts' : messages.length + ' messages'}?`)) return;
@@ -47,6 +53,21 @@ export function Approvals() {
           <h2>Videos ({videos.length}){working.length > 0 && <small className="muted"> · {working.length} still being created</small>}</h2>
           <div className="grid g3">
             {[...videos, ...working].map((v) => <VideoCard key={v.id} v={v} onOpen={() => setOpen(v.id)} />)}
+          </div>
+        </section>
+      )}
+
+      {images.length > 0 && (
+        <section style={{ marginBottom: 22 }}>
+          <h2>Images ({images.length})</h2>
+          <div className="grid g3">
+            {images.map((c) => (
+              <div className="card stack" key={c.id}>
+                <b>{productName(c.productId)}</b>
+                <ImagePreview id={c.blobId} alt={c.headline} />
+                <div className="row"><button className="btn small primary" onClick={() => decideCreative(c.id, true)}>Approve</button><button className="btn small" onClick={() => decideCreative(c.id, false)}>Reject</button></div>
+              </div>
+            ))}
           </div>
         </section>
       )}

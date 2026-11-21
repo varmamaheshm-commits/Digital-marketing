@@ -18,7 +18,7 @@ const ORIGIN = 'app://studio';
 const EXTERNAL_LINK = /^(mailto:|tel:|sms:|https:\/\/wa\.me\/)/i;
 // Web pages the app may open in the owner's browser: the platforms' own sites (published posts and
 // the developer consoles used once during setup). Anything else is refused.
-const EXTERNAL_HOST = /(^|\.)(youtube\.com|youtu\.be|google\.com|facebook\.com|instagram\.com|linkedin\.com|x\.com)$/i;
+const EXTERNAL_HOST = /(^|\.)(youtube\.com|youtu\.be|google\.com|facebook\.com|instagram\.com|linkedin\.com|x\.com|pinterest\.com|tiktok\.com|threads\.net|t\.me|telegram\.org)$/i;
 const EXTERNAL = { test: (url) => {
   if (EXTERNAL_LINK.test(url)) return true;
   try { const u = new URL(url); return u.protocol === 'https:' && EXTERNAL_HOST.test(u.hostname); } catch { return false; }

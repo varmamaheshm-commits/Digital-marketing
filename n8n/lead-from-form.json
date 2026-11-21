@@ -18,7 +18,7 @@
         "genericAuthType": "httpHeaderAuth",
         "sendBody": true,
         "specifyBody": "json",
-        "jsonBody": "={{ JSON.stringify({ name: $json.body.name, phone: $json.body.phone, email: $json.body.email, source: $json.body.source || 'website form', product: $json.body.product, notes: $json.body.message, consent: $json.body.consent === true }) }}",
+        "jsonBody": "={{ JSON.stringify({ name: $json.body.name, phone: $json.body.phone, email: $json.body.email, source: $json.body.source || 'website form', product: $json.body.product, notes: $json.body.message, consent: $json.body.consent === true || $json.body.consent === 'true' }) }}",
         "options": {}
       },
       "id": "1b0f1f3e-0002-4000-8000-000000000002",

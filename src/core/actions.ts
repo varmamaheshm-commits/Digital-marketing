@@ -1,5 +1,6 @@
 /** Owner- and autopilot-level operations built on the encrypted store. */
 import { cancelRender, pumpQueue } from '../video/queue';
+import { newCreative, pumpPosters } from '../video/poster';
 import { aiCopy, aiLeadMessage } from './agents';
 import { aiModels } from './ai';
 import { newVideo, planAutopilot } from './autopilot';
@@ -21,6 +22,10 @@ export async function runAutopilot(): Promise<{ videos: number; posts: number; m
     const plan = planAutopilot(snap.data, snap.settings);
     for (const s of plan.scores) await patch('leads', s.id, { score: s.score });
     for (const v of plan.videos) await put('videos', v);
+    for (const im of plan.images) {
+      const product = getOne('products', im.productId);
+      if (product) await put('images', newCreative(product, snap.settings, im.format));
+    }
     // Hand the drafts to the AI agents when the owner's AI engine is running; otherwise keep the template text.
     const model = plan.posts.length + plan.messages.length > 0 ? await agentModel() : null;
     for (const p of plan.posts) {
@@ -43,6 +48,7 @@ export async function runAutopilot(): Promise<{ videos: number; posts: number; m
       await log('auto', `Autopilot prepared ${made.videos} video(s) for your approval, plus ${made.posts} post(s) and ${made.messages} lead message(s).`);
     }
     void pumpQueue();
+    if (plan.images.length) void pumpPosters().catch(() => {});
     void runPublisher();
     return made;
   } finally {
@@ -64,7 +70,8 @@ export function pendingCounts() {
   const videos = d.videos.filter((v) => v.status === 'pending').length;
   const posts = d.posts.filter((p) => p.status === 'pending').length;
   const messages = d.messages.filter((m) => m.status === 'pending').length;
-  return { videos, posts, messages, total: videos + posts + messages };
+  const images = d.images.filter((c) => c.status === 'pending').length;
+  return { videos, posts, messages, images, total: videos + posts + messages + images };
 }
 
 const textStatus = () => (getSnapshot().settings.approvals === 'all' ? 'pending' : 'approved') as 'pending' | 'approved';
@@ -145,9 +152,24 @@ export async function deleteProduct(id: string) {
   const d = getSnapshot().data;
   for (const v of d.videos.filter((x) => x.productId === id)) await deleteVideo(v.id);
   for (const x of d.posts.filter((x) => x.productId === id)) await remove('posts', x.id);
+  for (const c of d.images.filter((x) => x.productId === id)) await deleteCreative(c.id);
   for (const img of p.imageIds) await delBlob(img);
   await remove('products', id);
   await log('owner', `Deleted product ${p.name}.`);
+}
+
+// ----- image posts -----
+export async function decideCreative(id: string, approve: boolean) {
+  const c = getOne('images', id);
+  if (!c) return;
+  await patch('images', id, { status: approve ? 'approved' : 'rejected', decidedAt: Date.now() });
+  await log('owner', `${approve ? 'Approved' : 'Rejected'} an image post for ${name(c.productId)}.`);
+}
+export async function deleteCreative(id: string) {
+  const c = getOne('images', id);
+  if (!c) return;
+  await delBlob(c.blobId);
+  await remove('images', id);
 }
 
 // ----- posts -----
@@ -156,7 +178,7 @@ export async function createPost(productId: string, platform: Platform, when: nu
   if (!p) return;
   const copy = buildCopy(p, getSnapshot().settings, platform, Math.floor(Math.random() * 1e9));
   const video = getSnapshot().data.videos.find((v) => v.productId === productId && v.status === 'approved' && v.format === (platform === 'youtube' ? 'wide' : 'reel'));
-  const post: Post = { id: uid(), productId, platform, title: copy.title, body: copy.body, hashtags: copy.hashtags, scheduledFor: when, status: textStatus(), videoId: video?.id, createdAt: Date.now() };
+  const post: Post = { id: uid(), productId, platform, title: copy.title, body: copy.body, hashtags: copy.hashtags, scheduledFor: when, status: 'pending', videoId: video?.id, createdAt: Date.now() };
   await put('posts', post);
 }
 export async function decidePost(id: string, approve: boolean) {

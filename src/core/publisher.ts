@@ -10,30 +10,37 @@ import { TARGET_INFO, uid, type Publication, type Settings, type SocialAccount, 
 
 export interface DesktopSocial {
   connect: (provider: SocialProvider, creds: { clientId: string; clientSecret: string; organizationId?: string; redirectUri?: string; configId?: string }) => Promise<{ ok: boolean; error?: string; account?: Partial<SocialAccount> }>;
-  publish: (target: SocialTarget, account: SocialAccount, job: { video: ArrayBuffer; title: string; text: string; tags: string[]; format: string; mime: string }) => Promise<{ ok: boolean; url?: string; id?: string; error?: string; retryable?: boolean; tokens?: Partial<SocialAccount> }>;
+  publish: (target: SocialTarget, account: SocialAccount, job: { kind?: 'video' | 'image' | 'text'; media?: ArrayBuffer; video?: ArrayBuffer; title: string; text: string; tags: string[]; format: string; mime: string; link?: string }) => Promise<{ ok: boolean; url?: string; id?: string; note?: string; error?: string; retryable?: boolean; tokens?: Partial<SocialAccount> }>;
 }
 export const desktopSocial = (): DesktopSocial | undefined => (globalThis as any).desktop?.social;
 
 const clip = (s: string, n: number) => (s.length <= n ? s : s.slice(0, n - 1).replace(/\s+\S*$/, '') + '…');
 
+/** What gets posted, whatever its kind. */
+export interface Postable { title: string; caption: string; hashtags: string[]; format: string }
+
 /** The title, text and tags used on each platform (each has its own limits and habits). */
-export function postText(target: SocialTarget, v: Video, productName: string, s: Settings): { title: string; text: string; tags: string[] } {
-  const tags = v.hashtags.map((t) => t.replace(/^#/, ''));
-  const caption = v.caption.trim();
+export function textFor(target: SocialTarget, item: Postable, productName: string, s: Settings, kind: 'video' | 'image' | 'post' = 'video'): { title: string; text: string; tags: string[] } {
+  const tags = item.hashtags.map((t) => t.replace(/^#/, ''));
+  const caption = item.caption.trim();
   if (target === 'youtube') {
-    const title = v.format === 'wide' ? v.title || productName : `${productName}${s.business.name ? ' | ' + s.business.name : ''} #Shorts`;
-    return { title: clip(title, 100), text: [caption, v.hashtags.slice(0, 8).join(' ')].filter(Boolean).join('\n\n'), tags };
+    const title = item.format === 'wide' ? item.title || productName : `${productName}${s.business.name ? ' | ' + s.business.name : ''} #Shorts`;
+    return { title: clip(title, 100), text: [caption, item.hashtags.slice(0, 8).join(' ')].filter(Boolean).join('\n\n'), tags };
   }
-  if (target === 'x') {
-    const few = v.hashtags.slice(0, 3).join(' ');
+  if (target === 'x' || target === 'threads') {
+    const few = item.hashtags.slice(0, 3).join(' ');
     const first = caption.split(/\n\s*\n/)[0] || productName;
     const contact = s.business.phone || s.business.website;
     const base = [first, contact].filter(Boolean).join(' — ');
-    return { title: productName, text: [clip(base, 268 - few.length), few].filter(Boolean).join('\n'), tags };
+    const max = target === 'x' ? 268 : 480;
+    return { title: productName, text: [clip(base, max - few.length), few].filter(Boolean).join('\n'), tags };
   }
-  if (target === 'linkedin') return { title: productName, text: [caption, v.hashtags.slice(0, 5).join(' ')].filter(Boolean).join('\n\n'), tags };
-  return { title: productName, text: [caption, v.hashtags.join(' ')].filter(Boolean).join('\n\n'), tags };
+  if (target === 'linkedin') return { title: productName, text: [caption, item.hashtags.slice(0, 5).join(' ')].filter(Boolean).join('\n\n'), tags };
+  if (target === 'pinterest') return { title: clip(item.title || productName, 100), text: clip([caption, item.hashtags.slice(0, 5).join(' ')].filter(Boolean).join(' '), 490), tags };
+  void kind;
+  return { title: item.title || productName, text: [caption, item.hashtags.join(' ')].filter(Boolean).join('\n\n'), tags };
 }
+export const postText = (target: SocialTarget, v: Video, productName: string, s: Settings) => textFor(target, v, productName, s, 'video');
 
 export const accountFor = (data: Data, target: SocialTarget): SocialAccount | undefined => {
   const a = data.accounts.find((x) => x.id === TARGET_INFO[target].provider);
@@ -42,18 +49,40 @@ export const accountFor = (data: Data, target: SocialTarget): SocialAccount | un
   return a;
 };
 
-/** New posting jobs: every approved video × every destination with auto-post on, once. */
+/** Posts from the content calendar that are meant for social feeds (not email, WhatsApp or ad drafts). */
+const SOCIAL_POSTS = new Set(['facebook', 'instagram', 'youtube']);
+
+/**
+ * New posting jobs, each created once: every APPROVED video, image post and text post
+ * × every connected destination whose auto-post is on for that kind and shape.
+ */
 export function planPublications(data: Data, now = Date.now()): Publication[] {
   const out: Publication[] = [];
+  const done = (itemId: string, target: SocialTarget) => data.publications.some((p) => (p.itemId ?? p.videoId) === itemId && p.target === target);
   for (const target of Object.keys(TARGET_INFO) as SocialTarget[]) {
+    const info = TARGET_INFO[target];
     const acc = accountFor(data, target);
     const cfg = acc?.targets[target];
     if (!acc || !cfg?.auto) continue;
     for (const v of data.videos) {
-      if (v.status !== 'approved' || !v.blobId || !cfg.formats.includes(v.format)) continue;
+      if (v.status !== 'approved' || !v.blobId || !cfg.formats.includes(v.format) || !info.formats.includes(v.format)) continue;
       if ((v.decidedAt ?? 0) < cfg.since) continue; // never back-post videos approved before auto-post was switched on
-      if (data.publications.some((p) => p.videoId === v.id && p.target === target)) continue;
-      out.push({ id: uid(), videoId: v.id, target, status: 'queued', attempts: 0, createdAt: now });
+      if (done(v.id, target)) continue;
+      out.push({ id: uid(), kind: 'video', videoId: v.id, target, status: 'queued', attempts: 0, createdAt: now });
+    }
+    if (cfg.images) {
+      for (const c of data.images) {
+        if (c.status !== 'approved' || !c.blobId || !info.images.includes(c.format)) continue;
+        if ((c.decidedAt ?? 0) < cfg.since || done(c.id, target)) continue;
+        out.push({ id: uid(), kind: 'image', videoId: '', itemId: c.id, target, status: 'queued', attempts: 0, createdAt: now });
+      }
+    }
+    if (cfg.posts && info.text) {
+      for (const p of data.posts) {
+        if (p.status !== 'approved' || !SOCIAL_POSTS.has(p.platform) || p.videoId || p.scheduledFor > now) continue;
+        if ((p.decidedAt ?? p.createdAt) < cfg.since || done(p.id, target)) continue;
+        out.push({ id: uid(), kind: 'post', videoId: '', itemId: p.id, target, status: 'queued', attempts: 0, createdAt: now });
+      }
     }
   }
   return out;
@@ -65,6 +94,20 @@ export const dueForRetry = (p: Publication, now = Date.now()) =>
   p.status === 'failed' && p.retryable === true && p.attempts < MAX_ATTEMPTS && now - (p.triedAt ?? 0) > RETRY_AFTER;
 
 let running = false;
+
+/** The approved thing a job posts, or null when it is gone or no longer approved. */
+function resolveItem(kind: 'video' | 'image' | 'post', job: Publication): (Postable & { productId: string; blobId?: string; mime: string }) | null {
+  if (kind === 'video') {
+    const v = getOne('videos', job.videoId);
+    return v && v.status === 'approved' && v.blobId ? { ...v, mime: v.mime ?? 'video/mp4' } : null;
+  }
+  if (kind === 'image') {
+    const c = getOne('images', job.itemId);
+    return c && c.status === 'approved' && c.blobId ? { title: c.headline, caption: c.caption, hashtags: c.hashtags, format: c.format, productId: c.productId, blobId: c.blobId, mime: 'image/png' } : null;
+  }
+  const p = getOne('posts', job.itemId);
+  return p && p.status === 'approved' ? { title: p.title, caption: p.body, hashtags: p.hashtags, format: 'text', productId: p.productId, mime: 'text/plain' } : null;
+}
 
 /** Queues a single video for one destination by hand (still only if it is approved). */
 export async function postNow(videoId: string, target: SocialTarget) {
@@ -88,33 +131,38 @@ export async function runPublisher(): Promise<void> {
       const job = snap.data.publications.find((p) => p.status === 'queued') ?? snap.data.publications.find((p) => dueForRetry(p));
       if (!job) break;
       const label = TARGET_INFO[job.target].label;
-      const v = getOne('videos', job.videoId);
+      const kind = job.kind ?? 'video';
       const acc = accountFor(snap.data, job.target);
       const fail = (error: string, retryable = false) => patch('publications', job.id, { status: 'failed', error, retryable, triedAt: Date.now(), attempts: job.attempts + 1 });
       // The approval rule is enforced again at the moment of sending.
-      if (!v || v.status !== 'approved' || !v.blobId) { await fail('The video is no longer approved, so it was not posted.'); continue; }
+      const item = resolveItem(kind, job);
+      if (!item) { await fail(`The ${kind} is no longer approved, so it was not posted.`); continue; }
       if (!acc) { await fail(`${label} is not connected.`); continue; }
-      const bytes = await getBlob(v.blobId);
-      if (!bytes) { await fail('The video file is missing.'); continue; }
+      const bytes = item.blobId ? await getBlob(item.blobId) : null;
+      if (item.blobId && !bytes) { await fail(`The ${kind} file is missing.`); continue; }
       await patch('publications', job.id, { status: 'posting', triedAt: Date.now(), error: undefined });
-      const product = getOne('products', v.productId);
-      const text = postText(job.target, v, product?.name ?? 'Our product', snap.settings);
+      const product = getOne('products', item.productId);
+      const text = textFor(job.target, item, product?.name ?? 'Our product', snap.settings, kind);
+      const site = (snap.settings.seo.siteUrl || snap.settings.business.website).trim();
+      const link = /^https:\/\//i.test(site) ? site : undefined;
       let res: Awaited<ReturnType<DesktopSocial['publish']>>;
       try {
-        res = await bridge.publish(job.target, acc, { video: bytes, ...text, format: v.format, mime: v.mime ?? 'video/mp4' });
+        res = await bridge.publish(job.target, acc, { kind: kind === 'post' ? 'text' : kind, media: bytes ?? undefined, video: kind === 'video' ? bytes ?? undefined : undefined, ...text, format: item.format, mime: item.mime, link });
       } catch (e: any) {
         res = { ok: false, error: String(e?.message ?? e) };
       }
       if (getSnapshot().status !== 'unlocked') break;
       if (res.tokens) await patch('accounts', acc.id, res.tokens); // renewed access is kept (some platforms rotate it)
+      const what = kind === 'video' ? 'video' : kind === 'image' ? 'image post' : 'post';
       if (res.ok) {
-        await patch('publications', job.id, { status: 'posted', url: res.url, postedAt: Date.now(), attempts: job.attempts + 1, error: undefined });
-        await log('auto', `Publisher agent posted the ${product?.name ?? ''} video to ${label}.`);
-        emitEvent('video.posted', { videoId: v.id, product: product?.name ?? '', platform: label, url: res.url ?? '' });
+        await patch('publications', job.id, { status: 'posted', url: res.url, note: res.note || undefined, postedAt: Date.now(), attempts: job.attempts + 1, error: undefined });
+        if (kind === 'post' && job.itemId) await patch('posts', job.itemId, { status: 'published' });
+        await log('auto', `Publisher agent posted the ${product?.name ?? ''} ${what} to ${label}.${res.note ? ' ' + res.note : ''}`);
+        emitEvent(kind === 'video' ? 'video.posted' : 'item.posted', { videoId: job.videoId, itemId: job.itemId ?? job.videoId, kind, product: product?.name ?? '', platform: label, url: res.url ?? '' });
       } else {
-        emitEvent('video.post_failed', { videoId: v.id, product: product?.name ?? '', platform: label, reason: res.error ?? '' });
+        emitEvent(kind === 'video' ? 'video.post_failed' : 'item.post_failed', { videoId: job.videoId, itemId: job.itemId ?? job.videoId, kind, product: product?.name ?? '', platform: label, reason: res.error ?? '' });
         await fail(res.error ?? 'Unknown error.', res.retryable === true);
-        await log('auto', `Posting to ${label} failed: ${res.error ?? 'unknown error'}`);
+        await log('auto', `Posting the ${what} to ${label} failed: ${res.error ?? 'unknown error'}`);
       }
     }
   } finally {

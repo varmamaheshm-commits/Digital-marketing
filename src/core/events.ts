@@ -5,7 +5,7 @@
  */
 import { getSnapshot } from './store';
 
-export type LinkEvent = 'video.ready' | 'video.approved' | 'video.rejected' | 'video.posted' | 'video.post_failed' | 'lead.created' | 'test';
+export type LinkEvent = 'video.ready' | 'video.approved' | 'video.rejected' | 'video.posted' | 'video.post_failed' | 'item.posted' | 'item.post_failed' | 'lead.created' | 'test';
 
 export interface DesktopLink {
   start: (cfg: { code: string; port: number }) => Promise<{ ok: boolean; port?: number; addresses?: string[]; error?: string }>;

@@ -19,16 +19,25 @@ import { Leads } from './Leads';
 import { Products } from './Products';
 import { SettingsPage } from './Settings';
 import { Videos } from './Videos';
+import { Images } from './Images';
+import { Capture } from './Capture';
+import { Seo } from './Seo';
+import { Reports } from './Reports';
+import { pumpPosters } from '../video/poster';
 
-export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'content' | 'leads' | 'knowledge' | 'campaigns' | 'social' | 'link' | 'agents' | 'settings';
+export type Page = 'home' | 'approvals' | 'products' | 'videos' | 'images' | 'content' | 'leads' | 'capture' | 'seo' | 'reports' | 'knowledge' | 'campaigns' | 'social' | 'link' | 'agents' | 'settings';
 /** `main` items stay on the phone's bottom bar; the rest open from its More button. */
 const NAV: { id: Page; label: string; icon: string; main?: boolean }[] = [
   { id: 'home', label: 'Dashboard', icon: 'home', main: true },
   { id: 'approvals', label: 'Approvals', icon: 'check', main: true },
   { id: 'products', label: 'Products', icon: 'box' },
   { id: 'videos', label: 'Videos', icon: 'video', main: true },
+  { id: 'images', label: 'Images', icon: 'image' },
   { id: 'content', label: 'Content', icon: 'calendar' },
   { id: 'leads', label: 'Leads', icon: 'users', main: true },
+  { id: 'capture', label: 'Lead capture', icon: 'magnet' },
+  { id: 'seo', label: 'SEO', icon: 'search' },
+  { id: 'reports', label: 'Reports', icon: 'chart' },
   { id: 'knowledge', label: 'Knowledge', icon: 'book' },
   { id: 'campaigns', label: 'Campaigns', icon: 'target' },
   { id: 'social', label: 'Auto-post', icon: 'share' },
@@ -58,7 +67,7 @@ export function App() {
   // Start background work once unlocked; re-check every 10 minutes.
   useEffect(() => {
     if (!unlocked) return;
-    void recoverInterrupted().then(() => recoverPublications()).then(() => runAutopilot()).then(() => pumpQueue());
+    void recoverInterrupted().then(() => recoverPublications()).then(() => runAutopilot()).then(() => pumpQueue()).then(() => pumpPosters()).catch(() => {});
     const t = setInterval(() => void runAutopilot(), 10 * 60_000);
     return () => clearInterval(t);
   }, [unlocked]);
@@ -138,8 +147,12 @@ export function App() {
           {page === 'approvals' && <Approvals />}
           {page === 'products' && <Products />}
           {page === 'videos' && <Videos />}
+          {page === 'images' && <Images />}
           {page === 'content' && <Content />}
           {page === 'leads' && <Leads />}
+          {page === 'capture' && <Capture />}
+          {page === 'seo' && <Seo />}
+          {page === 'reports' && <Reports />}
           {page === 'knowledge' && <Knowledge />}
           {page === 'campaigns' && <Campaigns />}
           {page === 'social' && <Social />}

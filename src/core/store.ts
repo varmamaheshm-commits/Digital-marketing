@@ -26,7 +26,7 @@ export interface Snapshot {
 }
 
 const emptyData = (): Data => ({
-  products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], accounts: [], publications: [], settings: [],
+  products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], accounts: [], publications: [], images: [], settings: [],
 });
 
 let meta: VaultMeta | undefined;
@@ -56,6 +56,8 @@ function mergeSettings(s?: Partial<Settings>): Settings {
     security: { ...d.security, ...s.security },
     ai: { ...d.ai, ...s.ai, agents: { ...d.ai.agents, ...s.ai?.agents } },
     link: { ...d.link, ...s.link },
+    capture: { ...d.capture, ...s.capture },
+    seo: { ...d.seo, ...s.seo },
   };
 }
 

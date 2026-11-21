@@ -11,7 +11,7 @@ import { DEFAULT_SETTINGS, type Lead, type Product } from '../src/core/types';
 const IT = 1000; // low PBKDF2 cost keeps tests fast; production uses 600,000
 const product: Product = { id: 'p1', name: 'Glow Serum', category: 'skincare', description: 'A light vitamin C serum. Brightens in two weeks.', price: '499', offer: '20% off', features: ['Vitamin C', 'No parabens', 'Dermatologist tested', 'Vegan'], audience: 'busy women', keywords: ['glow'], imageIds: [], active: true, createdAt: 0 };
 const lead = (over: Partial<Lead> = {}): Lead => ({ id: 'l1', name: 'Asha Rao', phone: '9876543210', email: '', source: 'instagram', stage: 'new', score: 0, notes: '', consent: true, value: 0, createdAt: 1_000_000, ...over });
-const data = (over: Partial<Data> = {}): Data => ({ products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], accounts: [], publications: [], settings: [], ...over });
+const data = (over: Partial<Data> = {}): Data => ({ products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], accounts: [], publications: [], images: [], settings: [], ...over });
 const ALL = { ...DEFAULT_SETTINGS, approvals: 'all' as const };
 
 describe('vault encryption', () => {
@@ -180,12 +180,13 @@ describe('autopilot', () => {
     expect(plan.messages).toHaveLength(1);
     expect(plan.messages[0]).toMatchObject({ reason: 'welcome', status: 'pending', channel: 'whatsapp' });
   });
-  it('by default holds only videos for approval and makes one video per language', () => {
+  it('by default holds videos and posts for approval, sends follow-ups automatically, and makes one video per language', () => {
     const s = { ...DEFAULT_SETTINGS, autopilot: { ...DEFAULT_SETTINGS.autopilot, languages: ['en', 'te'] as const } };
     const plan = planAutopilot(data({ products: [product], leads: [lead({ createdAt: now })] }), s as any, now);
     expect(plan.videos.map((v) => `${v.format}-${v.lang}`).sort()).toEqual(['reel-en', 'reel-te', 'wide-en', 'wide-te']);
     expect(plan.videos.every((v) => v.status === 'queued')).toBe(true);
-    expect(plan.posts.every((p) => p.status === 'approved')).toBe(true);
+    expect(plan.posts.length).toBeGreaterThan(0);
+    expect(plan.posts.every((p) => p.status === 'pending')).toBe(true);
     expect(plan.messages[0].status).toBe('approved');
     const te = plan.videos.find((v) => v.lang === 'te')!;
     expect(te.script.at(-1)!.text).toMatch(/[\u0C00-\u0C7F]/);

@@ -67,8 +67,8 @@ export function SettingsPage() {
           <label className="check"><input type="checkbox" checked={s.autopilot.enabled} onChange={(e) => auto({ enabled: e.target.checked })} /> Prepare videos, posts and follow-ups automatically</label>
           <Field label="What needs your approval">
             <select data-testid="approvals-mode" value={s.approvals} onChange={(e) => save({ approvals: e.target.value as Settings['approvals'] })}>
-              <option value="videos">Videos only — posts and lead messages are approved automatically</option>
-              <option value="all">Everything — videos, posts and lead messages</option>
+              <option value="videos">Videos, images and posts; lead follow-up messages go out automatically</option>
+              <option value="all">Everything, including lead follow-up messages</option>
             </select>
           </Field>
           <b style={{ fontSize: '.86rem' }}>Video languages</b>

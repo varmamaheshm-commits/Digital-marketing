@@ -182,7 +182,7 @@ describe('publisher agent planning', () => {
   const now = 1_800_000_000_000;
   const v = (over: Partial<Video>): Video => ({ id: 'v1', productId: 'p1', format: 'reel', style: 'bold', mood: 'upbeat', seed: 1, script: [], caption: 'First paragraph about the serum.\n\nSecond paragraph.', hashtags: ['#GlowSerum', '#Skincare', '#ShopNow', '#MustHave'], title: 'Glow Serum | Skincare | ₹499', status: 'approved', blobId: 'b', createdAt: now, decidedAt: now, ...over });
   const account = (id: SocialAccount['id'], targets: SocialAccount['targets'], extra = {}): SocialAccount => ({ id, clientId: '', clientSecret: '', accessToken: 't', refreshToken: '', expiresAt: 0, name: '', extra, connectedAt: now - 1000, targets });
-  const data = (over: Partial<Data>): Data => ({ products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], accounts: [], publications: [], settings: [], ...over });
+  const data = (over: Partial<Data>): Data => ({ products: [], videos: [], posts: [], leads: [], messages: [], campaigns: [], activity: [], knowledge: [], accounts: [], publications: [], images: [], settings: [], ...over });
   const on = (formats: any) => ({ auto: true, formats, since: now - 500 });
 
   it('posts only approved videos, only where auto-post is on, only matching shapes, and only once', () => {

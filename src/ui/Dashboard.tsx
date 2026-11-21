@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { pendingCounts, runAutopilot } from '../core/actions';
 import { saveSettings, useStore } from '../core/store';
+import { buildReport, weekStart } from '../core/report';
 import type { LeadStage } from '../core/types';
 import type { Page } from './App';
 import { fmtDateTime, Icon, toast } from './common';
@@ -18,7 +19,9 @@ export function Dashboard({ go }: { go: (p: Page) => void }) {
   const closed = won.length + data.leads.filter((l) => l.stage === 'lost').length;
   const upcoming = data.posts.filter((p) => p.scheduledFor > now && p.status !== 'rejected').sort((a, b) => a.scheduledFor - b.scheduledFor).slice(0, 5);
   const maxStage = Math.max(1, ...STAGES.map((s) => data.leads.filter((l) => l.stage === s).length));
-  const productName = (id: string) => data.products.find((p) => p.id === id)?.name ?? '—';
+  const productName = (id: string) => data.products.find((p) => p.id === id)?.name ?? 'Product';
+  const trend = buildReport(data, weekStart(now) - 7 * WEEK, now + 1);
+  const trendMax = Math.max(1, ...trend.weekly.map((w) => w.leads));
 
   async function run() {
     setBusy(true);
@@ -32,7 +35,7 @@ export function Dashboard({ go }: { go: (p: Page) => void }) {
       <div className="head">
         <div className="grow">
           <h1>{settings.business.name ? `Hello, ${settings.business.name}` : 'Dashboard'}</h1>
-          <p>Autopilot prepares the work in the background. {settings.approvals === 'all' ? 'Nothing goes out until you approve it.' : 'Every video waits for your approval.'}</p>
+          <p>Autopilot prepares the work in the background. Videos, images and posts wait for your approval; {settings.approvals === 'all' ? 'lead messages too.' : 'lead follow-ups go out automatically.'}</p>
         </div>
         <label className="check">
           <input type="checkbox" checked={settings.autopilot.enabled} onChange={(e) => saveSettings({ ...settings, autopilot: { ...settings.autopilot, enabled: e.target.checked } })} />
@@ -87,6 +90,24 @@ export function Dashboard({ go }: { go: (p: Page) => void }) {
             ))}
           </div>
           <button className="btn small" style={{ marginTop: 10 }} onClick={() => go('content')}>Open calendar</button>
+        </div>
+        <div className="card">
+          <h2>Leads, last 8 weeks</h2>
+          <div className="row" style={{ alignItems: 'flex-end', height: 110, gap: 6 }} role="img" aria-label="Leads per week">
+            {trend.weekly.slice(-8).map((w) => (
+              <div key={w.week} title={`${new Date(w.week).toLocaleDateString()}: ${w.leads}`} style={{ flex: 1, height: '100%', display: 'flex', alignItems: 'flex-end' }}>
+                <div style={{ width: '100%', height: `${(w.leads / trendMax) * 100}%`, minHeight: 2, background: 'var(--brand, #6d28d9)', borderRadius: '4px 4px 0 0' }} />
+              </div>
+            ))}
+          </div>
+          <small>Top sources: {trend.bySource.slice(0, 3).map((s) => `${s.source} (${s.leads})`).join(', ') || 'none yet'}</small>
+          <div style={{ marginTop: 10 }}><button className="btn small" onClick={() => go('reports')}>Open reports</button></div>
+        </div>
+        <div className="card stack">
+          <h2>Grow</h2>
+          <button className="btn" onClick={() => go('images')}><Icon name="image" /> Images for posts and ads ({data.images.filter((c) => c.status === 'approved').length} ready)</button>
+          <button className="btn" onClick={() => go('capture')}><Icon name="magnet" /> Collect phone numbers and emails</button>
+          <button className="btn" onClick={() => go('seo')}><Icon name="search" /> Get found on Google</button>
         </div>
         <div className="card" style={{ gridColumn: '1 / -1' }}>
           <h2>Recent activity</h2>

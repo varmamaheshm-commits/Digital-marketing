@@ -39,6 +39,23 @@ const ENDPOINTS = {
     token: 'https://api.x.com/2/oauth2/token',
     api: 'https://api.x.com',
   },
+  pinterest: {
+    auth: 'https://www.pinterest.com/oauth/',
+    token: 'https://api.pinterest.com/v5/oauth/token',
+    api: 'https://api.pinterest.com/v5',
+  },
+  tiktok: {
+    auth: 'https://www.tiktok.com/v2/auth/authorize/',
+    token: 'https://open.tiktokapis.com/v2/oauth/token/',
+    api: 'https://open.tiktokapis.com/v2',
+  },
+  threads: {
+    auth: 'https://threads.net/oauth/authorize',
+    graph: 'https://graph.threads.net',
+  },
+  telegram: {
+    api: 'https://api.telegram.org',
+  },
 };
 
 const OAUTH_PORT = 53682;
@@ -48,15 +65,30 @@ const REDIRECTS = {
   meta: `http://localhost:${OAUTH_PORT}/oauth`,
   linkedin: `http://localhost:${OAUTH_PORT}/oauth`,
   x: `http://127.0.0.1:${OAUTH_PORT}/oauth`,
+  pinterest: `http://localhost:${OAUTH_PORT}/oauth`,
+  // TikTok and Threads only accept https:// addresses: the owner's relay page (Setting "redirect address") forwards here.
+  tiktok: `http://localhost:${OAUTH_PORT}/oauth`,
+  threads: `http://localhost:${OAUTH_PORT}/oauth`,
+  // Telegram has no browser sign-in: a bot token from @BotFather is entered instead.
+  telegram: 'none',
 };
 const SCOPES = {
   google: 'https://www.googleapis.com/auth/youtube.upload https://www.googleapis.com/auth/youtube.readonly',
   meta: 'pages_show_list,pages_read_engagement,pages_manage_posts,instagram_basic,instagram_content_publish,business_management',
   linkedin: 'openid profile w_member_social',
   x: 'tweet.read tweet.write users.read media.write offline.access',
+  pinterest: 'boards:read,pins:read,pins:write,user_accounts:read',
+  tiktok: 'user.info.basic,video.publish',
+  threads: 'threads_basic,threads_content_publish',
 };
 
-const ALLOWED_HOSTS = /(^|\.)(googleapis\.com|google\.com|facebook\.com|linkedin\.com|licdn\.com|x\.com|twitter\.com)$/i;
+const ALLOWED_HOSTS = /(^|\.)(googleapis\.com|google\.com|facebook\.com|linkedin\.com|licdn\.com|x\.com|twitter\.com|pinterest\.com|tiktokapis\.com|threads\.net|api\.telegram\.org)$/i;
+
+/** What each destination can receive. */
+const SUPPORTS = {
+  youtube: ['video'], instagram: ['video', 'image'], facebook: ['video', 'image', 'text'], linkedin: ['video', 'image', 'text'],
+  x: ['video', 'image', 'text'], pinterest: ['image'], tiktok: ['video'], threads: ['text'], telegram: ['video', 'image', 'text'],
+};
 const productionHost = (url) => {
   const u = new URL(url);
   return u.protocol === 'https:' && ALLOWED_HOSTS.test(u.hostname);
@@ -128,6 +160,10 @@ function authUrl(provider, creds, state, challenge, endpoints = ENDPOINTS) {
   if (provider === 'meta') Object.assign(p, /^\d{5,25}$/.test(String(creds.configId ?? '')) ? { config_id: String(creds.configId) } : { scope: SCOPES.meta });
   if (provider === 'linkedin') Object.assign(p, { scope: SCOPES.linkedin + (creds.organizationId ? ' w_organization_social' : '') });
   if (provider === 'x') Object.assign(p, { scope: SCOPES.x, code_challenge: challenge, code_challenge_method: 'S256' });
+  if (provider === 'pinterest') Object.assign(p, { scope: SCOPES.pinterest });
+  if (provider === 'threads') Object.assign(p, { scope: SCOPES.threads });
+  // TikTok names the app ID "client_key".
+  if (provider === 'tiktok') { delete p.client_id; Object.assign(p, { client_key: creds.clientId, scope: SCOPES.tiktok }); }
   return `${e.auth}?${form(p)}`;
 }
 
@@ -193,12 +229,49 @@ async function exchangeCode(provider, creds, code, verifier, deps = {}) {
     const me = (await call(`${e.api}/2/users/me`, { headers: bearer(t.access_token) }, 'Reading your X profile')).json;
     return { accessToken: t.access_token, refreshToken: t.refresh_token ?? '', expiresAt: now + (t.expires_in ?? 7200) * 1000, name: '@' + (me.data?.username ?? 'account'), extra: { userId: me.data?.id ?? '' } };
   }
+  if (provider === 'pinterest') {
+    const t = (await call(e.token, { method: 'POST', headers: basic(creds), body: form({ grant_type: 'authorization_code', code, redirect_uri: redirectFor('pinterest', creds) }) }, 'Pinterest sign-in')).json;
+    const me = (await call(`${e.api}/user_account`, { headers: bearer(t.access_token) }, 'Reading your Pinterest account')).json;
+    const boards = ((await call(`${e.api}/boards?page_size=100`, { headers: bearer(t.access_token) }, 'Reading your Pinterest boards')).json?.items ?? []).map((b) => ({ boardId: b.id, boardName: b.name }));
+    if (!boards.length) throw new PublishError('Your Pinterest account has no board yet. Create a board on Pinterest first, then connect again.');
+    return { accessToken: t.access_token, refreshToken: t.refresh_token ?? '', expiresAt: now + (t.expires_in ?? 2592000) * 1000, name: me.username ?? 'Pinterest', extra: { boards, ...boards[0] } };
+  }
+  if (provider === 'tiktok') {
+    const t = (await call(e.token, { method: 'POST', body: form({ client_key: creds.clientId, client_secret: creds.clientSecret, code, grant_type: 'authorization_code', redirect_uri: redirectFor('tiktok', creds) }) }, 'TikTok sign-in')).json;
+    if (!t?.access_token) throw new PublishError(`TikTok sign-in failed${t?.error_description ? ': ' + t.error_description : '.'}`);
+    let name = 'TikTok account';
+    try { name = (await call(`${e.api}/user/info/?fields=display_name`, { headers: bearer(t.access_token) }, 'Reading your TikTok profile')).json?.data?.user?.display_name || name; } catch { /* name is optional */ }
+    return { accessToken: t.access_token, refreshToken: t.refresh_token ?? '', expiresAt: now + (t.expires_in ?? 86400) * 1000, name, extra: { openId: t.open_id ?? '' } };
+  }
+  if (provider === 'threads') {
+    const short = (await call(`${e.graph}/oauth/access_token`, { method: 'POST', body: form({ client_id: creds.clientId, client_secret: creds.clientSecret, grant_type: 'authorization_code', redirect_uri: redirectFor('threads', creds), code }) }, 'Threads sign-in')).json;
+    const long = (await call(`${e.graph}/access_token?${form({ grant_type: 'th_exchange_token', client_secret: creds.clientSecret, access_token: short.access_token })}`, {}, 'Threads long-term access')).json;
+    const me = (await call(`${e.graph}/v1.0/me?${form({ fields: 'id,username', access_token: long.access_token })}`, {}, 'Reading your Threads profile')).json;
+    return { accessToken: long.access_token, refreshToken: '', expiresAt: now + (long.expires_in ?? 5184000) * 1000, name: '@' + (me.username ?? 'threads'), extra: { userId: me.id ?? short.user_id ?? '' } };
+  }
   throw new PublishError('Unknown platform.');
+}
+
+const basic = (c) => ({ Authorization: 'Basic ' + Buffer.from(`${c.clientId}:${c.clientSecret}`).toString('base64') });
+
+/** Telegram: no browser sign-in. The bot token from @BotFather, and the channel the bot is an admin of. */
+async function connectTelegram(creds, deps = {}) {
+  const e = (deps.endpoints ?? ENDPOINTS).telegram;
+  const { call } = client(deps);
+  const token = String(creds.clientSecret ?? '').trim();
+  if (!/^\d{5,15}:[A-Za-z0-9_-]{30,60}$/.test(token)) throw new PublishError('That does not look like a bot token from @BotFather (it looks like 123456789:ABC…).');
+  let chat = String(creds.organizationId ?? '').trim();
+  if (/^t\.me\//i.test(chat) || /^https:\/\/t\.me\//i.test(chat)) chat = '@' + chat.replace(/^(https:\/\/)?t\.me\//i, '');
+  if (!/^(@[A-Za-z0-9_]{4,64}|-?\d{5,20})$/.test(chat)) throw new PublishError('Enter the channel as @channelname (or its numeric ID).');
+  const bot = (await call(`${e.api}/bot${token}/getMe`, {}, 'Checking the bot')).json?.result;
+  const info = (await call(`${e.api}/bot${token}/getChat?${form({ chat_id: chat })}`, {}, 'Finding the channel (add the bot to the channel as an admin first)')).json?.result;
+  return { accessToken: token, refreshToken: '', expiresAt: 0, name: info?.title ?? chat, extra: { chatId: String(info?.id ?? chat), username: info?.username ?? '', bot: bot?.username ?? '' } };
 }
 
 /** Full sign-in: open the platform's own sign-in page in the owner's browser and wait for the result. */
 async function connect(provider, creds, openBrowser, deps = {}) {
   if (!REDIRECTS[provider]) throw new PublishError('Unknown platform.');
+  if (provider === 'telegram') return connectTelegram(creds, deps);
   if (!creds?.clientId) throw new PublishError('Enter the app / client ID first.');
   const state = crypto.randomBytes(24).toString('base64url');
   const { verifier, challenge } = pkce();
@@ -221,6 +294,22 @@ async function refreshIfNeeded(provider, account, deps = {}) {
     return { accessToken: t.access_token, refreshToken: t.refresh_token ?? account.refreshToken, expiresAt: Date.now() + (t.expires_in ?? 3600) * 1000 };
   }
   if (provider === 'linkedin') throw new PublishError('LinkedIn access lasts about 60 days and has expired. Please connect LinkedIn again.');
+  if (provider === 'pinterest') {
+    if (!account.refreshToken) throw new PublishError('Pinterest access has expired. Please connect Pinterest again.');
+    const t = (await call(e.token, { method: 'POST', headers: basic(account), body: form({ grant_type: 'refresh_token', refresh_token: account.refreshToken }) }, 'Renewing Pinterest access')).json;
+    return { accessToken: t.access_token, refreshToken: t.refresh_token ?? account.refreshToken, expiresAt: Date.now() + (t.expires_in ?? 2592000) * 1000 };
+  }
+  if (provider === 'tiktok') {
+    if (!account.refreshToken) throw new PublishError('TikTok access has expired. Please connect TikTok again.');
+    const t = (await call(e.token, { method: 'POST', body: form({ client_key: account.clientId, client_secret: account.clientSecret, grant_type: 'refresh_token', refresh_token: account.refreshToken }) }, 'Renewing TikTok access')).json;
+    if (!t?.access_token) throw new PublishError('TikTok access has expired. Please connect TikTok again.');
+    return { accessToken: t.access_token, refreshToken: t.refresh_token ?? account.refreshToken, expiresAt: Date.now() + (t.expires_in ?? 86400) * 1000 };
+  }
+  if (provider === 'threads') {
+    if (account.expiresAt < Date.now()) throw new PublishError('Threads access has expired. Please connect Threads again.');
+    const t = (await call(`${e.graph}/refresh_access_token?${form({ grant_type: 'th_refresh_token', access_token: account.accessToken })}`, {}, 'Renewing Threads access')).json;
+    return { accessToken: t.access_token, expiresAt: Date.now() + (t.expires_in ?? 5184000) * 1000 };
+  }
   return null;
 }
 
@@ -355,28 +444,237 @@ async function x(acc, job, deps) {
   return { id: pid, url: `https://x.com/i/status/${pid}` };
 }
 
-const TARGETS = { youtube: ['google', youtube], instagram: ['meta', instagram], facebook: ['meta', facebook], linkedin: ['linkedin', linkedin], x: ['x', x] };
+// ---------------------------------------------------------------- images and text posts
+
+async function facebookImage(acc, job, deps) {
+  const e = (deps.endpoints ?? ENDPOINTS).meta;
+  const { call } = client(deps);
+  const page = acc.extra?.pageId, pageKey = acc.extra?.pageToken;
+  if (!page) throw new PublishError('Choose the Facebook Page to post to.');
+  const fd = new FormData();
+  fd.set('access_token', pageKey);
+  fd.set('message', clip(job.text, 5000));
+  fd.set('source', new Blob([job.media], { type: job.mime }), 'image.png');
+  const res = (await call(`${e.graph}/${page}/photos`, { method: 'POST', body: fd, timeoutMs: 600_000 }, 'Posting the image on Facebook')).json;
+  if (!res?.id) throw new PublishError('Facebook did not confirm the image.');
+  return { id: res.post_id ?? res.id, url: `https://www.facebook.com/${res.post_id ?? res.id}` };
+}
+async function facebookText(acc, job, deps) {
+  const e = (deps.endpoints ?? ENDPOINTS).meta;
+  const { call } = client(deps);
+  const page = acc.extra?.pageId, pageKey = acc.extra?.pageToken;
+  if (!page) throw new PublishError('Choose the Facebook Page to post to.');
+  const res = (await call(`${e.graph}/${page}/feed`, { method: 'POST', body: form({ message: clip(job.text, 5000), link: job.link, access_token: pageKey }) }, 'Posting on Facebook')).json;
+  if (!res?.id) throw new PublishError('Facebook did not confirm the post.');
+  return { id: res.id, url: `https://www.facebook.com/${res.id}` };
+}
+
+/** Instagram fetches images from a web address, so the image is first stored (unpublished) on the linked Facebook Page. */
+async function instagramImage(acc, job, deps) {
+  const e = (deps.endpoints ?? ENDPOINTS).meta;
+  const { call } = client(deps);
+  const ig = acc.extra?.igUserId, pageKey = acc.extra?.pageToken, page = acc.extra?.pageId;
+  if (!ig || !page) throw new PublishError('The selected Facebook Page has no Instagram professional account linked to it.');
+  const fd = new FormData();
+  fd.set('access_token', pageKey);
+  fd.set('published', 'false');
+  fd.set('source', new Blob([job.media], { type: job.mime }), 'image.png');
+  const photo = (await call(`${e.graph}/${page}/photos`, { method: 'POST', body: fd, timeoutMs: 600_000 }, 'Preparing the image for Instagram')).json;
+  const src = (await call(`${e.graph}/${photo?.id}?${form({ fields: 'images', access_token: pageKey })}`, {}, 'Reading the image address')).json?.images?.[0]?.source;
+  if (!src) throw new PublishError('Facebook did not return an address Instagram can read the image from.');
+  const box = (await call(`${e.graph}/${ig}/media`, { method: 'POST', body: form({ image_url: src, caption: clip(job.text, 2200), access_token: pageKey }) }, 'Preparing the Instagram post')).json;
+  if (!box?.id) throw new PublishError('Instagram did not accept the image.');
+  const pub = (await call(`${e.graph}/${ig}/media_publish`, { method: 'POST', body: form({ creation_id: box.id, access_token: pageKey }) }, 'Publishing on Instagram')).json;
+  let url = '';
+  try { url = (await call(`${e.graph}/${pub.id}?${form({ fields: 'permalink', access_token: pageKey })}`, {}, 'Reading the Instagram link')).json?.permalink ?? ''; } catch { /* optional */ }
+  return { id: pub.id, url };
+}
+
+const liHeaders = (acc, e) => ({ ...bearer(acc.accessToken), 'LinkedIn-Version': e.version, 'X-Restli-Protocol-Version': '2.0.0', 'Content-Type': 'application/json' });
+async function linkedinPost(acc, job, deps, content) {
+  const e = (deps.endpoints ?? ENDPOINTS).linkedin;
+  const { call } = client(deps);
+  const post = {
+    author: acc.extra?.author, commentary: clip(job.text, 2900), visibility: 'PUBLIC',
+    distribution: { feedDistribution: 'MAIN_FEED', targetEntities: [], thirdPartyDistributionChannels: [] },
+    ...(content ? { content } : {}), lifecycleState: 'PUBLISHED', isReshareDisabledByAuthor: false,
+  };
+  const res = await call(`${e.api}/rest/posts`, { method: 'POST', headers: liHeaders(acc, e), body: JSON.stringify(post) }, 'Publishing on LinkedIn');
+  const urn = res.headers.get('x-restli-id') ?? res.json?.id ?? '';
+  return { id: urn, url: urn ? `https://www.linkedin.com/feed/update/${urn}` : '' };
+}
+async function linkedinImage(acc, job, deps) {
+  const e = (deps.endpoints ?? ENDPOINTS).linkedin;
+  const { call } = client(deps);
+  const init = (await call(`${e.api}/rest/images?action=initializeUpload`, { method: 'POST', headers: liHeaders(acc, e), body: JSON.stringify({ initializeUploadRequest: { owner: acc.extra?.author } }) }, 'Preparing the LinkedIn image')).json?.value;
+  if (!init?.uploadUrl || !init.image) throw new PublishError('LinkedIn did not provide an upload address.');
+  await call(init.uploadUrl, { method: 'PUT', headers: { ...bearer(acc.accessToken), 'Content-Type': 'application/octet-stream' }, body: job.media, timeoutMs: 600_000 }, 'Uploading the image to LinkedIn');
+  return linkedinPost(acc, job, deps, { media: { title: clip(job.title, 100), id: init.image } });
+}
+
+async function xMedia(acc, job, deps, category) {
+  const e = (deps.endpoints ?? ENDPOINTS).x;
+  const { call, sleep } = client(deps);
+  const auth = bearer(acc.accessToken);
+  const init = (await call(`${e.api}/2/media/upload/initialize`, { method: 'POST', headers: { ...auth, 'Content-Type': 'application/json' }, body: JSON.stringify({ media_type: job.mime, total_bytes: job.media.length, media_category: category }) }, 'Preparing the X upload')).json;
+  const id = init?.data?.id;
+  if (!id) throw new PublishError('X did not start the upload.');
+  const CHUNK = 4 * 1024 * 1024;
+  for (let i = 0, seg = 0; i < job.media.length; i += CHUNK, seg++) {
+    const fd = new FormData();
+    fd.set('segment_index', String(seg));
+    fd.set('media', new Blob([job.media.subarray(i, i + CHUNK)], { type: 'application/octet-stream' }), 'chunk');
+    await call(`${e.api}/2/media/upload/${id}/append`, { method: 'POST', headers: auth, body: fd }, 'Uploading to X');
+  }
+  let info = (await call(`${e.api}/2/media/upload/${id}/finalize`, { method: 'POST', headers: auth }, 'Finishing the X upload')).json?.data?.processing_info;
+  for (let i = 0; info && info.state !== 'succeeded'; i++) {
+    if (info.state === 'failed') throw new PublishError(`X could not process the file: ${clip(info.error?.message ?? 'unknown reason', 200)}`);
+    if (i >= 60) throw new PublishError('X is still processing the file after several minutes.', true);
+    await sleep(Math.min(10, Math.max(1, info.check_after_secs ?? 3)) * 1000);
+    info = (await call(`${e.api}/2/media/upload?${form({ command: 'STATUS', media_id: id })}`, { headers: auth }, 'Checking X processing')).json?.data?.processing_info;
+  }
+  return id;
+}
+async function xTweet(acc, job, deps, mediaId) {
+  const e = (deps.endpoints ?? ENDPOINTS).x;
+  const { call } = client(deps);
+  const body = { text: clip(job.text, 270), ...(mediaId ? { media: { media_ids: [mediaId] } } : {}) };
+  const post = (await call(`${e.api}/2/tweets`, { method: 'POST', headers: { ...bearer(acc.accessToken), 'Content-Type': 'application/json' }, body: JSON.stringify(body) }, 'Publishing on X')).json;
+  const pid = post?.data?.id;
+  if (!pid) throw new PublishError('X did not confirm the post.');
+  return { id: pid, url: `https://x.com/i/status/${pid}` };
+}
+
+async function pinterestImage(acc, job, deps) {
+  const e = (deps.endpoints ?? ENDPOINTS).pinterest;
+  const { call } = client(deps);
+  const board = acc.extra?.boardId;
+  if (!board) throw new PublishError('Choose the Pinterest board to pin to.');
+  const body = {
+    board_id: board, title: clip(job.title, 100), description: clip(job.text, 500), alt_text: clip(job.title, 500),
+    ...(job.link ? { link: job.link } : {}),
+    media_source: { source_type: 'image_base64', content_type: job.mime, data: job.media.toString('base64') },
+  };
+  const pin = (await call(`${e.api}/pins`, { method: 'POST', headers: { ...bearer(acc.accessToken), 'Content-Type': 'application/json' }, body: JSON.stringify(body), timeoutMs: 600_000 }, 'Creating the Pinterest pin')).json;
+  if (!pin?.id) throw new PublishError('Pinterest did not confirm the pin.');
+  return { id: pin.id, url: `https://www.pinterest.com/pin/${pin.id}/` };
+}
+
+/** TikTok answers 200 with an error object, so every answer is checked. */
+function tiktokOk(json, what) {
+  const code = json?.error?.code;
+  if (code && code !== 'ok') throw new PublishError(`${what} was refused: ${clip(json.error.message || code, 300)}`, code === 'rate_limit_exceeded' || code === 'internal_error');
+  return json?.data ?? {};
+}
+async function tiktokVideo(acc, job, deps) {
+  const e = (deps.endpoints ?? ENDPOINTS).tiktok;
+  const { call, sleep } = client(deps);
+  const headers = { ...bearer(acc.accessToken), 'Content-Type': 'application/json; charset=UTF-8' };
+  const creator = tiktokOk((await call(`${e.api}/post/publish/creator_info/query/`, { method: 'POST', headers }, 'Reading your TikTok posting options')).json, 'TikTok');
+  const options = creator.privacy_level_options ?? [];
+  // Apps not yet audited by TikTok may only post privately; the owner then makes the post public inside TikTok.
+  const privacy = options.includes('PUBLIC_TO_EVERYONE') ? 'PUBLIC_TO_EVERYONE' : options[0] ?? 'SELF_ONLY';
+  const size = job.media.length;
+  const MB = 1024 * 1024;
+  const chunk = size <= 64 * MB ? size : 10 * MB;
+  const count = Math.max(1, Math.floor(size / chunk));
+  const init = tiktokOk((await call(`${e.api}/post/publish/video/init/`, { method: 'POST', headers, body: JSON.stringify({
+    post_info: { title: clip(job.text, 2200), privacy_level: privacy, disable_duet: false, disable_comment: false, disable_stitch: false },
+    source_info: { source: 'FILE_UPLOAD', video_size: size, chunk_size: chunk, total_chunk_count: count },
+  }) }, 'Preparing the TikTok upload')).json, 'TikTok');
+  if (!init.upload_url || !init.publish_id) throw new PublishError('TikTok did not provide an upload address.');
+  for (let i = 0; i < count; i++) {
+    const start = i * chunk, end = i === count - 1 ? size : start + chunk;
+    await call(init.upload_url, { method: 'PUT', headers: { 'Content-Type': job.mime, 'Content-Range': `bytes ${start}-${end - 1}/${size}` }, body: job.media.subarray(start, end), timeoutMs: 1_800_000 }, 'Uploading to TikTok');
+  }
+  for (let i = 0; ; i++) {
+    const st = tiktokOk((await call(`${e.api}/post/publish/status/fetch/`, { method: 'POST', headers, body: JSON.stringify({ publish_id: init.publish_id }) }, 'Checking TikTok processing')).json, 'TikTok');
+    if (st.status === 'PUBLISH_COMPLETE' || st.status === 'SEND_TO_USER_INBOX') break;
+    if (st.status === 'FAILED') throw new PublishError(`TikTok could not publish the video: ${st.fail_reason ?? 'unknown reason'}.`);
+    if (i >= 60) throw new PublishError('TikTok is still processing the video after 5 minutes.', true);
+    await sleep(5000);
+  }
+  return { id: init.publish_id, url: '', note: privacy === 'SELF_ONLY' ? 'Posted as private, because TikTok has not audited your app yet. Open TikTok to make it public.' : '' };
+}
+
+async function threadsText(acc, job, deps) {
+  const e = (deps.endpoints ?? ENDPOINTS).threads;
+  const { call } = client(deps);
+  const user = acc.extra?.userId || 'me';
+  const box = (await call(`${e.graph}/v1.0/${user}/threads`, { method: 'POST', body: form({ media_type: 'TEXT', text: clip(job.text, 490), access_token: acc.accessToken }) }, 'Preparing the Threads post')).json;
+  if (!box?.id) throw new PublishError('Threads did not accept the post.');
+  const pub = (await call(`${e.graph}/v1.0/${user}/threads_publish`, { method: 'POST', body: form({ creation_id: box.id, access_token: acc.accessToken }) }, 'Publishing on Threads')).json;
+  let url = '';
+  try { url = (await call(`${e.graph}/v1.0/${pub.id}?${form({ fields: 'permalink', access_token: acc.accessToken })}`, {}, 'Reading the Threads link')).json?.permalink ?? ''; } catch { /* optional */ }
+  return { id: pub.id, url };
+}
+
+async function telegramSend(acc, job, deps) {
+  const e = (deps.endpoints ?? ENDPOINTS).telegram;
+  const { call } = client(deps);
+  const bot = `${e.api}/bot${acc.accessToken}`;
+  const chat = acc.extra?.chatId;
+  if (!chat) throw new PublishError('Choose the Telegram channel to post to.');
+  let res;
+  if (job.kind === 'text') {
+    res = (await call(`${bot}/sendMessage`, { method: 'POST', body: form({ chat_id: chat, text: clip(job.text, 4000) }) }, 'Posting on Telegram')).json;
+  } else {
+    const fd = new FormData();
+    fd.set('chat_id', chat);
+    fd.set('caption', clip(job.text, 1000));
+    if (job.kind === 'image') fd.set('photo', new Blob([job.media], { type: job.mime }), 'image.png');
+    else { fd.set('video', new Blob([job.media], { type: job.mime }), 'video.mp4'); fd.set('supports_streaming', 'true'); }
+    res = (await call(`${bot}/${job.kind === 'image' ? 'sendPhoto' : 'sendVideo'}`, { method: 'POST', body: fd, timeoutMs: 1_800_000 }, 'Posting on Telegram')).json;
+  }
+  const id = res?.result?.message_id;
+  if (!id) throw new PublishError('Telegram did not confirm the post.');
+  return { id: String(id), url: acc.extra?.username ? `https://t.me/${acc.extra.username}/${id}` : '' };
+}
+
+/** destination -> [sign-in provider, { video, image, text }] */
+const TARGETS = {
+  youtube: ['google', { video: youtube }],
+  instagram: ['meta', { video: instagram, image: instagramImage }],
+  facebook: ['meta', { video: facebook, image: facebookImage, text: facebookText }],
+  linkedin: ['linkedin', { video: linkedin, image: linkedinImage, text: (a, j, d) => linkedinPost(a, j, d) }],
+  x: ['x', {
+    video: async (a, j, d) => xTweet(a, j, d, await xMedia(a, j, d, 'tweet_video')),
+    image: async (a, j, d) => xTweet(a, j, d, await xMedia(a, j, d, 'tweet_image')),
+    text: (a, j, d) => xTweet(a, j, d),
+  }],
+  pinterest: ['pinterest', { image: pinterestImage }],
+  tiktok: ['tiktok', { video: tiktokVideo }],
+  threads: ['threads', { text: threadsText }],
+  telegram: ['telegram', { video: telegramSend, image: telegramSend, text: telegramSend }],
+};
+
+const toBuffer = (raw) => (Buffer.isBuffer(raw) ? raw : raw instanceof ArrayBuffer ? Buffer.from(raw) : ArrayBuffer.isView(raw) ? Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength) : null);
 
 /**
- * Publishes one approved video to one platform.
- * Returns { ok, url, id, tokens? } or { ok: false, error, retryable }.
+ * Publishes one approved video, image or text post to one platform.
+ * Returns { ok, url, id, note?, tokens? } or { ok: false, error, retryable }.
  */
 async function publish(target, account, job, deps = {}) {
   try {
     const entry = TARGETS[target];
     if (!entry) throw new PublishError('Unknown platform.');
     if (!account?.accessToken) throw new PublishError('This account is not connected.');
-    // The page hands the file over as an ArrayBuffer; tests pass a Buffer.
-    const raw = job?.video;
-    const video = Buffer.isBuffer(raw) ? raw : raw instanceof ArrayBuffer ? Buffer.from(raw) : ArrayBuffer.isView(raw) ? Buffer.from(raw.buffer, raw.byteOffset, raw.byteLength) : null;
-    if (!video || !video.length) throw new PublishError('The video file is empty.');
-    const tokens = await refreshIfNeeded(entry[0], account, deps);
-    const acc = tokens ? { ...account, ...tokens } : account;
-    const out = await entry[1](acc, { title: String(job.title ?? ''), text: String(job.text ?? ''), tags: Array.isArray(job.tags) ? job.tags.map(String) : [], format: job.format, mime: job.mime === 'video/quicktime' ? 'video/quicktime' : 'video/mp4', video }, deps);
-    return { ok: true, ...out, tokens: tokens ?? undefined };
+    const kind = job?.kind === 'image' || job?.kind === 'text' ? job.kind : 'video';
+    const run = entry[1][kind];
+    if (!run) throw new PublishError(`This platform does not accept ${kind === 'text' ? 'text-only posts' : kind + 's'}.`);
+    // The page hands files over as an ArrayBuffer; tests pass a Buffer. Older callers send `video`.
+    const media = kind === 'text' ? Buffer.alloc(0) : toBuffer(job.media ?? job.video);
+    if (kind !== 'text' && (!media || !media.length)) throw new PublishError(`The ${kind} file is empty.`);
+    if (kind === 'text' && !String(job.text ?? '').trim()) throw new PublishError('The post has no text.');
+    const fresh = await refreshIfNeeded(entry[0], account, deps);
+    const acc = fresh ? { ...account, ...fresh } : account;
+    const mime = kind === 'image' ? (job.mime === 'image/jpeg' ? 'image/jpeg' : 'image/png') : job.mime === 'video/quicktime' ? 'video/quicktime' : 'video/mp4';
+    const link = typeof job.link === 'string' && /^https:\/\/\S+$/i.test(job.link) ? job.link : undefined;
+    const out = await run(acc, { kind, title: String(job.title ?? ''), text: String(job.text ?? ''), tags: Array.isArray(job.tags) ? job.tags.map(String) : [], format: job.format, mime, media, video: media, link }, deps);
+    return { ok: true, ...out, tokens: fresh ?? undefined };
   } catch (e) {
     return { ok: false, error: String(e?.message ?? e).slice(0, 500), retryable: e?.retryable === true };
   }
 }
 
-module.exports = { redirectFor, publish, connect, exchangeCode, authUrl, waitForCode, refreshIfNeeded, productionHost, ENDPOINTS, REDIRECTS, OAUTH_PORT };
+module.exports = { redirectFor, publish, connect, connectTelegram, exchangeCode, authUrl, waitForCode, refreshIfNeeded, productionHost, ENDPOINTS, REDIRECTS, OAUTH_PORT, SUPPORTS };

@@ -34,14 +34,17 @@ export function newVideo(p: Product, s: Settings, format: VideoFormat, opts: { s
 
 export interface Plan {
   videos: Video[];
+  /** Image posts to draw (a fresh one per active product with photos, as often as videos are refreshed). */
+  images: { productId: string; format: 'square' | 'portrait' | 'story' | 'wide' }[];
   posts: Post[];
   messages: Message[];
   scores: { id: string; score: number }[];
 }
 
 export function planAutopilot(data: Data, s: Settings, now = Date.now()): Plan {
-  const plan: Plan = { videos: [], posts: [], messages: [], scores: [] };
+  const plan: Plan = { videos: [], images: [], posts: [], messages: [], scores: [] };
   // Videos always wait for the owner. Text drafts wait only when the owner asked to approve everything.
+  // Videos, images and posts always wait for the owner. Lead follow-ups wait only when the owner asked to approve everything.
   const textStatus = s.approvals === 'all' ? 'pending' : 'approved';
   for (const l of data.leads) {
     const score = scoreLead(l, now);
@@ -63,6 +66,15 @@ export function planAutopilot(data: Data, s: Settings, now = Date.now()): Plan {
     }
   }
 
+  // 1b. Image posts: a square and a story image per product with photos.
+  for (const p of products) {
+    if (!p.imageIds.length) continue;
+    for (const format of ['square', 'story'] as const) {
+      const mine = (data.images ?? []).filter((c) => c.productId === p.id && c.format === format && c.status !== 'failed' && c.status !== 'rejected');
+      if (!mine.some((c) => c.status === 'queued' || now - c.createdAt < s.autopilot.videoRefreshDays * DAY)) plan.images.push({ productId: p.id, format });
+    }
+  }
+
   // 2. Content calendar: keep the coming 7 days filled.
   if (products.length && s.autopilot.postsPerWeek > 0) {
     const upcoming = data.posts.filter((x) => x.status !== 'rejected' && x.scheduledFor > now && x.scheduledFor <= now + 7 * DAY);
@@ -79,7 +91,7 @@ export function planAutopilot(data: Data, s: Settings, now = Date.now()): Plan {
       const video = data.videos.find((v) => v.productId === p.id && v.status === 'approved' && v.format === wanted);
       plan.posts.push({
         id: uid(), productId: p.id, platform, title: copy.title, body: copy.body, hashtags: copy.hashtags,
-        scheduledFor: when.getTime(), status: textStatus, videoId: video?.id, createdAt: now,
+        scheduledFor: when.getTime(), status: 'pending', videoId: video?.id, createdAt: now,
       });
     }
   }

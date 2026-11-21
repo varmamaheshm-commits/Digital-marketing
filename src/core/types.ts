@@ -127,6 +127,35 @@ export interface Campaign {
 }
 
 /** A document in the owner's private knowledge base (price lists, FAQs, policies …). */
+/** A still image for social posts and ads, drawn by the app from the product's photos. */
+export type PosterFormat = 'square' | 'portrait' | 'story' | 'wide';
+export type PosterTemplate = 'spotlight' | 'split' | 'offer';
+export const POSTER_INFO: Record<PosterFormat, { label: string; w: number; h: number; use: string }> = {
+  square: { label: 'Square 1:1', w: 1080, h: 1080, use: 'Instagram / Facebook feed, WhatsApp' },
+  portrait: { label: 'Portrait 4:5', w: 1080, h: 1350, use: 'Instagram feed (largest on phones)' },
+  story: { label: 'Story 9:16', w: 1080, h: 1920, use: 'Stories, WhatsApp status' },
+  wide: { label: 'Link / ad 1.91:1', w: 1200, h: 628, use: 'Facebook & LinkedIn link posts, Google display ads' },
+};
+export interface Creative {
+  id: string;
+  productId: string;
+  format: PosterFormat;
+  template: PosterTemplate;
+  headline: string;
+  sub: string;
+  badge: string;
+  cta: string;
+  seed: number;
+  caption: string;
+  hashtags: string[];
+  /** queued -> pending / approved (approved directly unless the owner approves everything); failed on error */
+  status: 'queued' | 'failed' | ApprovalStatus;
+  error?: string;
+  blobId?: string;
+  createdAt: number;
+  decidedAt?: number;
+}
+
 export interface KnowledgeDoc {
   id: string;
   title: string;
@@ -134,14 +163,19 @@ export interface KnowledgeDoc {
   createdAt: number;
 }
 
-export type SocialProvider = 'google' | 'meta' | 'linkedin' | 'x';
-export type SocialTarget = 'youtube' | 'instagram' | 'facebook' | 'linkedin' | 'x';
-export const TARGET_INFO: Record<SocialTarget, { label: string; provider: SocialProvider; formats: VideoFormat[] }> = {
-  youtube: { label: 'YouTube', provider: 'google', formats: ['wide', 'reel'] },
-  instagram: { label: 'Instagram', provider: 'meta', formats: ['reel'] },
-  facebook: { label: 'Facebook', provider: 'meta', formats: ['reel', 'wide', 'square'] },
-  linkedin: { label: 'LinkedIn', provider: 'linkedin', formats: ['wide', 'square', 'reel'] },
-  x: { label: 'X', provider: 'x', formats: ['wide', 'square', 'reel'] },
+export type SocialProvider = 'google' | 'meta' | 'linkedin' | 'x' | 'pinterest' | 'tiktok' | 'threads' | 'telegram';
+export type SocialTarget = 'youtube' | 'instagram' | 'facebook' | 'linkedin' | 'x' | 'pinterest' | 'tiktok' | 'threads' | 'telegram';
+/** What a destination accepts: videos (in these shapes), image posts (in these shapes) and text-only posts. */
+export const TARGET_INFO: Record<SocialTarget, { label: string; provider: SocialProvider; formats: VideoFormat[]; images: PosterFormat[]; text: boolean }> = {
+  youtube: { label: 'YouTube', provider: 'google', formats: ['wide', 'reel'], images: [], text: false },
+  instagram: { label: 'Instagram', provider: 'meta', formats: ['reel'], images: ['square', 'portrait', 'wide'], text: false },
+  facebook: { label: 'Facebook', provider: 'meta', formats: ['reel', 'wide', 'square'], images: ['square', 'portrait', 'wide', 'story'], text: true },
+  linkedin: { label: 'LinkedIn', provider: 'linkedin', formats: ['wide', 'square', 'reel'], images: ['square', 'portrait', 'wide'], text: true },
+  x: { label: 'X', provider: 'x', formats: ['wide', 'square', 'reel'], images: ['square', 'portrait', 'wide'], text: true },
+  pinterest: { label: 'Pinterest', provider: 'pinterest', formats: [], images: ['portrait', 'story', 'square'], text: false },
+  tiktok: { label: 'TikTok', provider: 'tiktok', formats: ['reel'], images: [], text: false },
+  threads: { label: 'Threads', provider: 'threads', formats: [], images: [], text: true },
+  telegram: { label: 'Telegram channel', provider: 'telegram', formats: ['reel', 'wide', 'square'], images: ['square', 'portrait', 'wide', 'story'], text: true },
 };
 /** A connected platform account. Stored only inside the encrypted vault. */
 export interface SocialAccount {
@@ -160,11 +194,16 @@ export interface SocialAccount {
   extra: Record<string, any>;
   connectedAt: number;
   /** Per destination: post approved videos automatically, for which shapes, and only those approved after `since`. */
-  targets: Partial<Record<SocialTarget, { auto: boolean; formats: VideoFormat[]; since: number }>>;
+  targets: Partial<Record<SocialTarget, { auto: boolean; formats: VideoFormat[]; since: number; images?: boolean; posts?: boolean }>>;
 }
 export interface Publication {
   id: string;
+  /** What is posted: an approved video (default), image post or text post. */
+  kind?: 'video' | 'image' | 'post';
+  /** The video id; for images and posts this is '' and `itemId` names the item. */
   videoId: string;
+  itemId?: string;
+  note?: string;
   target: SocialTarget;
   status: 'queued' | 'posting' | 'posted' | 'failed';
   url?: string;
@@ -209,6 +248,10 @@ export interface Settings {
   ai: { enabled: boolean; model: string; agents: { scripts: boolean; posts: boolean; leads: boolean; answers: boolean } };
   /** Phone link and automation API served by the desktop app on the local network. */
   link: { enabled: boolean; code: string; port: number; webhookUrl: string };
+  /** Lead capture pages: where their form sends enquiries (an n8n webhook), and the WhatsApp number shown on them. */
+  capture: { formUrl: string; whatsapp: string };
+  /** Website used for SEO texts and tracked links. */
+  seo: { siteUrl: string; city: string };
 }
 
 export interface Collections {
@@ -222,10 +265,11 @@ export interface Collections {
   knowledge: KnowledgeDoc;
   accounts: SocialAccount;
   publications: Publication;
+  images: Creative;
   settings: Settings;
 }
 export type Col = keyof Collections;
-export const COLS: Col[] = ['products', 'videos', 'posts', 'leads', 'messages', 'campaigns', 'activity', 'knowledge', 'accounts', 'publications', 'settings'];
+export const COLS: Col[] = ['products', 'videos', 'posts', 'leads', 'messages', 'campaigns', 'activity', 'knowledge', 'accounts', 'publications', 'images', 'settings'];
 
 export const DEFAULT_SETTINGS: Settings = {
   id: 'main',
@@ -250,6 +294,8 @@ export const DEFAULT_SETTINGS: Settings = {
   security: { autoLockMinutes: 10, keepWorking: false },
   ai: { enabled: false, model: '', agents: { scripts: true, posts: true, leads: true, answers: true } },
   link: { enabled: false, code: '', port: 53683, webhookUrl: '' },
+  capture: { formUrl: '', whatsapp: '' },
+  seo: { siteUrl: '', city: '' },
 };
 
 export const FORMAT_INFO: Record<VideoFormat, { label: string; w: number; h: number; use: string }> = {
