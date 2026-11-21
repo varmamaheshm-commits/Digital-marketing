@@ -24,7 +24,9 @@ function fakeNet(routes: Record<string, (body: any, init: any) => any>) {
   return { log, deps: { fetch, allowHost: () => true, sleep: async () => {} } };
 }
 const png = Buffer.from('89504e470d0a1a0a0000', 'hex');
-const BOT = '123456789:' + 'A'.repeat(35);
+/** Placeholder in the shape of a Telegram bot key (digits, colon, 35 letters). Made up at run time; not a real key. */
+const fakeBotKey = (): string => `${100000000 + Math.floor(Math.random() * 899999999)}:${'x'.repeat(35)}`;
+const BOT = fakeBotKey();
 
 describe('Telegram channel', () => {
   it('connects with a bot token and channel name, without a browser sign-in', async () => {
