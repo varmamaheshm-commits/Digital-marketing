@@ -342,38 +342,38 @@ async function metaUpload(url, token, video, call, what) {
 async function instagram(acc, job, deps) {
   const e = (deps.endpoints ?? ENDPOINTS).meta;
   const { call, sleep } = client(deps);
-  const ig = acc.extra?.igUserId, token = acc.extra?.pageToken;
+  const ig = acc.extra?.igUserId, pageKey = acc.extra?.pageToken;
   if (!ig) throw new PublishError('The selected Facebook Page has no Instagram professional account linked to it.');
-  const box = (await call(`${e.graph}/${ig}/media`, { method: 'POST', body: form({ media_type: 'REELS', upload_type: 'resumable', caption: clip(job.text, 2200), share_to_feed: 'true', access_token: token }) }, 'Preparing the Instagram reel')).json;
+  const box = (await call(`${e.graph}/${ig}/media`, { method: 'POST', body: form({ media_type: 'REELS', upload_type: 'resumable', caption: clip(job.text, 2200), share_to_feed: 'true', access_token: pageKey }) }, 'Preparing the Instagram reel')).json;
   if (!box?.id || !box.uri) throw new PublishError('Instagram did not provide an upload address.');
-  await metaUpload(box.uri, token, job.video, call, 'Uploading to Instagram');
+  await metaUpload(box.uri, pageKey, job.video, call, 'Uploading to Instagram');
   for (let i = 0; ; i++) {
-    const st = (await call(`${e.graph}/${box.id}?${form({ fields: 'status_code,status', access_token: token })}`, {}, 'Checking Instagram processing')).json;
+    const st = (await call(`${e.graph}/${box.id}?${form({ fields: 'status_code,status', access_token: pageKey })}`, {}, 'Checking Instagram processing')).json;
     if (st.status_code === 'FINISHED') break;
     if (st.status_code === 'ERROR' || st.status_code === 'EXPIRED') throw new PublishError(`Instagram could not process the video: ${clip(st.status ?? st.status_code, 200)}`);
     if (i >= 60) throw new PublishError('Instagram is still processing the video after 5 minutes.', true);
     await sleep(5000);
   }
-  const pub = (await call(`${e.graph}/${ig}/media_publish`, { method: 'POST', body: form({ creation_id: box.id, access_token: token }) }, 'Publishing on Instagram')).json;
+  const pub = (await call(`${e.graph}/${ig}/media_publish`, { method: 'POST', body: form({ creation_id: box.id, access_token: pageKey }) }, 'Publishing on Instagram')).json;
   let url = '';
-  try { url = (await call(`${e.graph}/${pub.id}?${form({ fields: 'permalink', access_token: token })}`, {}, 'Reading the Instagram link')).json?.permalink ?? ''; } catch { /* link is optional */ }
+  try { url = (await call(`${e.graph}/${pub.id}?${form({ fields: 'permalink', access_token: pageKey })}`, {}, 'Reading the Instagram link')).json?.permalink ?? ''; } catch { /* link is optional */ }
   return { id: pub.id, url };
 }
 
 async function facebook(acc, job, deps) {
   const e = (deps.endpoints ?? ENDPOINTS).meta;
   const { call } = client(deps);
-  const page = acc.extra?.pageId, token = acc.extra?.pageToken;
+  const page = acc.extra?.pageId, pageKey = acc.extra?.pageToken;
   if (!page) throw new PublishError('Choose the Facebook Page to post to.');
   if (job.format === 'reel') {
-    const start = (await call(`${e.graph}/${page}/video_reels`, { method: 'POST', body: form({ upload_phase: 'start', access_token: token }) }, 'Preparing the Facebook reel')).json;
+    const start = (await call(`${e.graph}/${page}/video_reels`, { method: 'POST', body: form({ upload_phase: 'start', access_token: pageKey }) }, 'Preparing the Facebook reel')).json;
     if (!start?.video_id || !start.upload_url) throw new PublishError('Facebook did not provide an upload address.');
-    await metaUpload(start.upload_url, token, job.video, call, 'Uploading to Facebook');
-    await call(`${e.graph}/${page}/video_reels`, { method: 'POST', body: form({ upload_phase: 'finish', video_id: start.video_id, video_state: 'PUBLISHED', description: clip(job.text, 2000), access_token: token }) }, 'Publishing on Facebook');
+    await metaUpload(start.upload_url, pageKey, job.video, call, 'Uploading to Facebook');
+    await call(`${e.graph}/${page}/video_reels`, { method: 'POST', body: form({ upload_phase: 'finish', video_id: start.video_id, video_state: 'PUBLISHED', description: clip(job.text, 2000), access_token: pageKey }) }, 'Publishing on Facebook');
     return { id: start.video_id, url: `https://www.facebook.com/reel/${start.video_id}` };
   }
   const fd = new FormData();
-  fd.set('access_token', token);
+  fd.set('access_token', pageKey);
   fd.set('title', clip(job.title, 250));
   fd.set('description', clip(job.text, 5000));
   fd.set('source', new Blob([job.video], { type: job.mime }), job.mime === 'video/quicktime' ? 'video.mov' : 'video.mp4');
