@@ -94,6 +94,22 @@ describe('images and text posts on the other platforms', () => {
     expect(x).toMatchObject({ ok: true, url: 'https://x.com/i/status/77' });
     expect(net.log[1].body).toEqual({ text: 'Sale this week' });
   });
+  it('reports refusals and network failures on the new platforms in plain words, without the access key', async () => {
+    const key = fakeBotKey();
+    const refused = fakeNet({ '/pins': () => ({ status: 401, json: { message: 'Authentication failed.' } }), '/U1/threads': () => ({ status: 500, json: { error: { message: 'Temporary problem' } } }) });
+    const pin = await social.publish('pinterest', { accessToken: key, expiresAt: 0, extra: { boardId: 'B1' } }, { kind: 'image', media: png, title: 'Glow', text: 'x', tags: [] }, refused.deps);
+    expect(pin).toMatchObject({ ok: false, retryable: false });
+    expect(pin.error).toMatch(/refused \(401\): Authentication failed/);
+    const th = await social.publish('threads', { accessToken: key, expiresAt: Date.now() + 86_400_000, extra: { userId: 'U1' } }, { kind: 'text', title: '', text: 'hi', tags: [] }, refused.deps);
+    expect(th).toMatchObject({ ok: false, retryable: true });
+    const offline = { ...refused.deps, fetch: async () => { throw new TypeError('fetch failed'); } };
+    for (const [target, acc, kind] of [['telegram', { extra: { chatId: '-1' } }, 'text'], ['tiktok', { extra: {} }, 'video'], ['pinterest', { extra: { boardId: 'B1' } }, 'image']] as const) {
+      const res = await social.publish(target, { accessToken: key, expiresAt: 0, ...acc }, { kind, media: Buffer.alloc(10, 1), title: 't', text: 'x', tags: [] }, offline);
+      expect(res).toMatchObject({ ok: false, retryable: true });
+      expect(res.error).toMatch(/network problem/);
+      expect(res.error).not.toContain(key);
+    }
+  });
   it('refuses what a platform cannot take, and empty posts', async () => {
     const net = fakeNet({});
     expect((await social.publish('youtube', { accessToken: 'g', expiresAt: 0, extra: {} }, { kind: 'image', media: png, title: '', text: 'x', tags: [] }, net.deps)).error).toMatch(/does not accept images/);
