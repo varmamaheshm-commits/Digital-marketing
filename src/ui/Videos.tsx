@@ -10,6 +10,11 @@ import { FORMAT_INFO, LANG_NAMES, PRESENTER_NAMES, TARGET_INFO, type Lang, type 
 import { canRenderVideo } from '../video/render';
 import { Chip, Empty, Field, fmtDateTime, fmtSize, Icon, Modal, Picture, toast, useBlobUrl } from './common';
 
+/** Re-creates a video; if that fails (for example storage is full) the owner is told instead of nothing happening. */
+function remake(v: Video, fresh: boolean) {
+  rerenderVideo(v, fresh).catch((e) => toast('Could not re-create the video: ' + String(e?.message ?? e)));
+}
+
 export function VideoCard({ v, onOpen }: { v: Video; onOpen: () => void }) {
   const { data } = useStore();
   const product = data.products.find((p) => p.id === v.productId);
@@ -26,7 +31,7 @@ export function VideoCard({ v, onOpen }: { v: Video; onOpen: () => void }) {
       {v.status === 'failed' && <div className="notice bad">{v.error}</div>}
       <div className="row">
         <button className="btn small" onClick={onOpen}>{v.status === 'pending' ? 'Review' : 'Open'}</button>
-        {v.status === 'failed' && <button className="btn small" onClick={() => rerenderVideo(v, false)}><Icon name="refresh" size={15} /> Retry</button>}
+        {v.status === 'failed' && <button className="btn small" onClick={() => remake(v, false)}><Icon name="refresh" size={15} /> Retry</button>}
       </div>
     </div>
   );
@@ -86,7 +91,7 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
       footer={
         <>
           <button className="btn danger" onClick={async () => { if (confirm('Delete this video?')) { await deleteVideo(v.id); onClose(); } }}><Icon name="trash" /> Delete</button>
-          {done && !uploaded && <button className="btn" onClick={() => rerenderVideo(v, true)}><Icon name="refresh" /> New version</button>}
+          {done && !uploaded && <button className="btn" onClick={() => remake(v, true)}><Icon name="refresh" /> New version</button>}
           {v.status === 'pending' && <button className="btn danger" data-testid="reject-video" onClick={() => decideVideo(v.id, false)}>Reject</button>}
           {(v.status === 'pending' || v.status === 'rejected') && <button className="btn ok" data-testid="approve-video" disabled={dirty} title={dirty ? 'Re-create the video with your changes first' : undefined} onClick={() => decideVideo(v.id, true)}><Icon name="check" /> Approve</button>}
           {v.status === 'approved' && (
