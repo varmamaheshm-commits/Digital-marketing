@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react';
 import { fitLength } from '../core/copy';
-import { addUploadedVideo, createVideo, decideVideo, deleteVideo, rerenderVideo } from '../core/actions';
+import { addUploadedVideo, createVideo, createVideoFromReference, decideVideo, deleteVideo, rerenderVideo } from '../core/actions';
+import { analyzeReference, colorsFrom, describeReference, styleFor, targetFor } from '../video/reference';
 import { inspectVideo, MAX_UPLOAD_BYTES, shapeOf, uploadMime, type VideoInfo } from '../video/upload';
 import { canShareFiles, copyText, saveFile, shareFile } from '../core/files';
 import { accountFor, desktopSocial, postNow } from '../core/publisher';
 import { getBlob, patch, useStore } from '../core/store';
-import { FORMAT_INFO, LANG_NAMES, PRESENTER_NAMES, TARGET_INFO, type Lang, type Presenter, type ScriptScene, type SocialTarget, type MusicMood, type Video, type VideoFormat, type VideoStyle } from '../core/types';
+import { FORMAT_INFO, LANG_NAMES, PRESENTER_NAMES, TARGET_INFO, type Lang, type Presenter, type ScriptScene, type SocialTarget, type MusicMood, type ReferenceLook, type Video, type VideoFormat, type VideoStyle } from '../core/types';
 import { canRenderVideo } from '../video/render';
 import { Chip, Empty, Field, fmtDateTime, fmtSize, Icon, Modal, Picture, toast, useBlobUrl } from './common';
 
@@ -108,6 +109,7 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
           {v.status === 'pending' && <div className="notice warn">Waiting for your approval. Saving and sharing unlock after you approve.</div>}
           {v.status === 'approved' && <div className="notice ok">Approved. Save or share it to {FORMAT_INFO[v.format].use}.</div>}
           {v.error && <div className="notice bad">{v.error}</div>}
+          {v.reference && <div className="notice" data-testid="reference-note">Made in the style of <b>{v.reference.name}</b>: {describeReference(v.reference)}{v.colors ? ', using its colours' : ''}.</div>}
           {v.status === 'approved' && desktopSocial() && (
             <div className="stack">
               <h3>Post to</h3>
@@ -168,6 +170,7 @@ export function Videos() {
   const [open, setOpen] = useState<string | null>(null);
   const [creating, setCreating] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [referencing, setReferencing] = useState(false);
   const [filter, setFilter] = useState('all');
   const videos = [...data.videos].sort((a, b) => b.createdAt - a.createdAt).filter((v) => filter === 'all' || v.status === filter);
   return (
@@ -175,6 +178,7 @@ export function Videos() {
       <div className="head">
         <div className="grow"><h1>Videos</h1><p>Upload your own recordings or let the app create videos from your product photos. Every video waits for your approval.</p></div>
         <button className="btn" data-testid="upload-video" disabled={!data.products.length} onClick={() => setUploading(true)}><Icon name="share" /> Upload my video</button>
+        <button className="btn" data-testid="reference-video" disabled={!data.products.length} onClick={() => setReferencing(true)}><Icon name="image" /> From a reference video</button>
         <button className="btn primary" disabled={!data.products.length} onClick={() => setCreating(true)}><Icon name="plus" /> Create video</button>
       </div>
       {!canRenderVideo() && <div className="notice bad" style={{ marginBottom: 12 }}>This browser has no built-in video encoder. Use the desktop or Android app, or a current Chrome, Edge or Safari.</div>}
@@ -190,6 +194,7 @@ export function Videos() {
       )}
       {open && <VideoDetail id={open} onClose={() => setOpen(null)} />}
       {creating && <CreateVideo onClose={() => setCreating(false)} />}
+      {referencing && <ReferenceVideo onClose={() => setReferencing(false)} onDone={(id) => { setReferencing(false); setOpen(id); }} />}
       {uploading && <UploadVideo onClose={() => setUploading(false)} onDone={(id) => { setUploading(false); setOpen(id); }} />}
     </>
   );
@@ -296,6 +301,86 @@ function UploadVideo({ onClose, onDone }: { onClose: () => void; onDone: (videoI
             </Field>
             {info.seconds > 140 && <div className="notice warn">Longer than 2 minutes 20 seconds: X may refuse it, and Instagram and Facebook show reels best under 90 seconds.</div>}
             {format === 'reel' && info.seconds > 180 && <div className="notice warn">YouTube treats vertical videos over 3 minutes as normal videos, not Shorts.</div>}
+          </>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+const STYLE_NAMES: Record<VideoStyle, string> = { bold: 'Bold', clean: 'Clean', luxe: 'Luxury' };
+const MOOD_NAMES: Record<MusicMood, string> = { upbeat: 'Upbeat', chill: 'Chill', cinematic: 'Cinematic', none: 'No music' };
+
+/** Upload a video whose style you like; the app makes a new video for your product in that style. */
+function ReferenceVideo({ onClose, onDone }: { onClose: () => void; onDone: (videoId: string) => void }) {
+  const { data, settings } = useStore();
+  const [productId, setProductId] = useState(data.products[0]?.id ?? '');
+  const [ref, setRef] = useState<ReferenceLook | null>(null);
+  const [format, setFormat] = useState<VideoFormat>('reel');
+  const [useColors, setUseColors] = useState(true);
+  const [style, setStyle] = useState<VideoStyle | ''>('');
+  const [mood, setMood] = useState<MusicMood | ''>('');
+  const [lang, setLang] = useState<Lang>('en');
+  const [presenter, setPresenter] = useState<Presenter>(settings.autopilot.presenter);
+  const [busy, setBusy] = useState('');
+  const [error, setError] = useState('');
+
+  async function choose(f?: File) {
+    setError(''); setRef(null);
+    if (!f) return;
+    if (!f.type.startsWith('video/') && !uploadMime(f)) return setError('Please choose a video file (MP4, MOV or WebM).');
+    if (f.size > MAX_UPLOAD_BYTES) return setError(`This video is ${fmtSize(f.size)}. The limit is ${fmtSize(MAX_UPLOAD_BYTES)}.`);
+    setBusy('Studying the video… 0%');
+    const look = await analyzeReference(f, (p) => setBusy(`Studying the video… ${Math.round(p * 100)}%`));
+    setBusy('');
+    if (!look) return setError('This device cannot read this video (common with some phone recordings). Export it as an MP4 (H.264) and try again.');
+    setRef(look);
+    setFormat(look.format);
+  }
+  async function create() {
+    if (!ref) return;
+    setBusy('Creating…');
+    const id = await createVideoFromReference(productId, ref, { format, useColors, style: style || undefined, mood: mood || undefined, lang, presenter });
+    setBusy('');
+    if (!id) return setError('Choose a product first.');
+    toast('Video is being created in the reference style — it will wait for your approval');
+    onDone(id);
+  }
+  const auto = ref ? styleFor(ref) : null;
+  const colors = ref ? colorsFrom(ref.palette) : null;
+  return (
+    <Modal title="Create from a reference video" onClose={onClose}
+      footer={<><button className="btn" onClick={onClose}>Cancel</button><button className="btn primary" data-testid="reference-create" disabled={!ref || !!busy || !productId} onClick={create}>{busy || 'Create video'}</button></>}>
+      <div className="stack">
+        <p className="muted">Upload a video whose style you like — an ad, a reel or one of your own. The app studies it on this device (length, cut rhythm, colours, brightness and energy) and creates a new video for your product with your photos and text in the same style. Nothing from the reference video is stored or shown in the new one.</p>
+        <div className="form">
+          <Field label="Product for the new video"><select value={productId} onChange={(e) => setProductId(e.target.value)}>{data.products.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}</select></Field>
+          <Field label="Reference video" hint={`MP4, MOV or WebM, up to ${fmtSize(MAX_UPLOAD_BYTES)}`}>
+            <input data-testid="reference-file" type="file" accept="video/*,.mp4,.m4v,.mov,.webm" onChange={(e) => choose(e.target.files?.[0])} />
+          </Field>
+        </div>
+        {busy && !ref && <div className="notice" role="status">{busy}</div>}
+        {error && <div className="notice bad" role="alert">{error}</div>}
+        {ref && auto && (
+          <>
+            <div className="notice ok" data-testid="reference-info">
+              <b>{ref.name}</b>: {describeReference(ref)}. The new video will be {targetFor(ref)} seconds with the same cut rhythm.
+              <div className="row" style={{ gap: 6, marginTop: 8 }} aria-label="Colours found in the reference">
+                {ref.palette.map((c) => <span key={c} title={c} style={{ width: 22, height: 22, borderRadius: 6, background: c, border: '1px solid var(--line, #ccc)' }} />)}
+              </div>
+            </div>
+            <div className="form">
+              <Field label="Shape" hint={FORMAT_INFO[format].use}>
+                <select value={format} onChange={(e) => setFormat(e.target.value as VideoFormat)}>
+                  {(Object.keys(FORMAT_INFO) as VideoFormat[]).map((f) => <option key={f} value={f}>{FORMAT_INFO[f].label}{f === ref.format ? ' (same as reference)' : ''}</option>)}
+                </select>
+              </Field>
+              <Field label="Look"><select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)}><option value="">Match reference ({STYLE_NAMES[auto.style]})</option>{(Object.keys(STYLE_NAMES) as VideoStyle[]).map((k) => <option key={k} value={k}>{STYLE_NAMES[k]}</option>)}</select></Field>
+              <Field label="Music"><select value={mood} onChange={(e) => setMood(e.target.value as MusicMood)}><option value="">Match reference ({MOOD_NAMES[auto.mood]})</option>{(Object.keys(MOOD_NAMES) as MusicMood[]).map((k) => <option key={k} value={k}>{MOOD_NAMES[k]}</option>)}</select></Field>
+              <Field label="Language"><select value={lang} onChange={(e) => setLang(e.target.value as Lang)}>{(Object.keys(LANG_NAMES) as Lang[]).map((l) => <option key={l} value={l}>{LANG_NAMES[l]}</option>)}</select></Field>
+              <Field label="Presenter"><select value={presenter} onChange={(e) => setPresenter(e.target.value as Presenter)}>{(Object.keys(PRESENTER_NAMES) as Presenter[]).map((k) => <option key={k} value={k}>{PRESENTER_NAMES[k]}</option>)}</select></Field>
+              <label className="check full"><input type="checkbox" data-testid="reference-colors" checked={useColors && !!colors} disabled={!colors} onChange={(e) => setUseColors(e.target.checked)} /> {colors ? 'Use the reference video’s colours instead of my brand colours' : 'The reference is too grey to take colours from — your brand colours will be used'}</label>
+            </div>
           </>
         )}
       </div>

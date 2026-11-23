@@ -74,7 +74,7 @@ export function buildComp(video: Video, images: Img[], s: Settings, extra: { mou
   });
   return {
     w, h, fps: 30, duration: t, scenes, style,
-    primary: s.brand.primary, accent: style.accent ?? s.brand.accent,
+    primary: video.colors?.primary ?? s.brand.primary, accent: video.colors?.accent ?? style.accent ?? s.brand.accent,
     business: s.business.name, images, cache: new Map(),
     presenter: video.presenter ?? 'none',
     mouth: extra.mouth ?? null,

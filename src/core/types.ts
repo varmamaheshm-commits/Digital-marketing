@@ -31,6 +31,24 @@ export interface ScriptScene {
   seconds: number;
 }
 
+/** What the app measured in a reference video: its length, cut rhythm, colours and energy. */
+export interface ReferenceLook {
+  name: string;
+  /** Length of the reference video in seconds. */
+  seconds: number;
+  format: VideoFormat;
+  /** Length of each shot between cuts, in seconds. */
+  shots: number[];
+  /** Most common colours, most common first, as #rrggbb. */
+  palette: string[];
+  /** 0 (dark) to 1 (bright). */
+  brightness: number;
+  /** 0 (grey) to 1 (vivid). */
+  saturation: number;
+  /** 0 (still) to 1 (lots of movement). */
+  motion: number;
+}
+
 export interface Video {
   id: string;
   productId: string;
@@ -58,6 +76,10 @@ export interface Video {
   error?: string;
   blobId?: string;
   thumbId?: string;
+  /** Made in the style of a reference video the owner uploaded (only the measurements are kept, never its footage). */
+  reference?: ReferenceLook;
+  /** Colours taken from the reference video instead of the brand colours. */
+  colors?: { primary: string; accent: string };
   mime?: string;
   sizeBytes?: number;
   seconds?: number;

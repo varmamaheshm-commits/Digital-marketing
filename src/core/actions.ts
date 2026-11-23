@@ -1,6 +1,7 @@
 /** Owner- and autopilot-level operations built on the encrypted store. */
 import { cancelRender, pumpQueue } from '../video/queue';
 import { newCreative, pumpPosters } from '../video/poster';
+import { applyReference, targetFor } from '../video/reference';
 import { aiCopy, aiLeadMessage } from './agents';
 import { aiModels } from './ai';
 import { newVideo, planAutopilot } from './autopilot';
@@ -9,7 +10,7 @@ import { scoreLead } from './leads';
 import { emitEvent } from './events';
 import { runPublisher } from './publisher';
 import { delBlob, getOne, getSnapshot, log, patch, put, putBlob, remove } from './store';
-import { uid, type Lang, type Lead, type Presenter, type Message, type MusicMood, type Platform, type Post, type Video, type VideoFormat, type VideoStyle } from './types';
+import { uid, type Lang, type Lead, type Presenter, type Message, type MusicMood, type Platform, type Post, type ReferenceLook, type Video, type VideoFormat, type VideoStyle } from './types';
 
 let busy = false;
 export async function runAutopilot(): Promise<{ videos: number; posts: number; messages: number }> {
@@ -84,6 +85,17 @@ export async function createVideo(productId: string, format: VideoFormat, style?
   await put('videos', newVideo(p, getSnapshot().settings, format, { style, mood, lang, ...more }));
   void pumpQueue();
 }
+
+/** Creates a video for a product in the style of a reference video the owner uploaded. It waits for approval like every video. */
+export async function createVideoFromReference(productId: string, ref: ReferenceLook, opts: { format?: VideoFormat; useColors: boolean; style?: VideoStyle; mood?: MusicMood; lang?: Lang; presenter?: Presenter; voice?: boolean }): Promise<string | null> {
+  const p = getOne('products', productId);
+  if (!p) return null;
+  const base = newVideo(p, getSnapshot().settings, opts.format ?? ref.format, { lang: opts.lang, seconds: targetFor(ref), presenter: opts.presenter, voice: opts.voice });
+  const v = applyReference(base, ref, { useColors: opts.useColors, style: opts.style, mood: opts.mood });
+  await put('videos', v);
+  void pumpQueue();
+  return v.id;
+}
 export async function decideVideo(id: string, approve: boolean, note = '') {
   const v = getOne('videos', id);
   if (!v) return;
@@ -100,7 +112,11 @@ export async function rerenderVideo(v: Video, fresh: boolean) {
   let next: Video = { ...v, status: 'queued', blobId: undefined, thumbId: undefined, progress: undefined, error: undefined, decidedAt: undefined, createdAt: Date.now() };
   if (fresh) {
     const p = getOne('products', v.productId);
-    if (p) next = { ...newVideo(p, getSnapshot().settings, v.format, { lang: v.lang, style: v.style, mood: v.mood, seconds: v.targetSeconds, presenter: v.presenter, voice: v.voice }), id: v.id };
+    if (p) {
+      next = { ...newVideo(p, getSnapshot().settings, v.format, { lang: v.lang, style: v.style, mood: v.mood, seconds: v.targetSeconds, presenter: v.presenter, voice: v.voice }), id: v.id };
+      // A fresh version of a reference-styled video keeps the reference's rhythm and colours.
+      if (v.reference) next = { ...applyReference(next, v.reference, { useColors: !!v.colors, style: v.style, mood: v.mood }), id: v.id };
+    }
   }
   await put('videos', next);
   void pumpQueue();
