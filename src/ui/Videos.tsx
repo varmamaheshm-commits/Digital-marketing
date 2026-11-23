@@ -340,7 +340,13 @@ function ReferenceVideo({ onClose, onDone }: { onClose: () => void; onDone: (vid
   async function create() {
     if (!ref) return;
     setBusy('Creating…');
-    const id = await createVideoFromReference(productId, ref, { format, useColors, style: style || undefined, mood: mood || undefined, lang, presenter });
+    let id: string | null = null;
+    try {
+      id = await createVideoFromReference(productId, ref, { format, useColors, style: style || undefined, mood: mood || undefined, lang, presenter });
+    } catch (e: any) {
+      setBusy('');
+      return setError('Could not save the new video: ' + String(e?.message ?? e));
+    }
     setBusy('');
     if (!id) return setError('Choose a product first.');
     toast('Video is being created in the reference style — it will wait for your approval');
