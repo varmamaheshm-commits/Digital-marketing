@@ -135,7 +135,7 @@ export function VideoDetail({ id, onClose }: { id: string; onClose: () => void }
             <>
               <h3>Make changes, then press “Re-create video”</h3>
               <div className="form">
-                <Field label="Look"><select data-testid="opt-style" value={opts.style} onChange={(e) => edit(setOpts)({ ...opts, style: e.target.value as VideoStyle })}><option value="bold">Bold</option><option value="clean">Clean</option><option value="luxe">Luxury</option></select></Field>
+                <Field label="Look"><select data-testid="opt-style" value={opts.style} onChange={(e) => edit(setOpts)({ ...opts, style: e.target.value as VideoStyle })}><option value="real">Realistic (cinematic)</option><option value="bold">Bold</option><option value="clean">Clean</option><option value="luxe">Luxury</option></select></Field>
                 <Field label="Music"><select value={opts.mood} onChange={(e) => edit(setOpts)({ ...opts, mood: e.target.value as MusicMood })}><option value="upbeat">Upbeat</option><option value="chill">Chill</option><option value="cinematic">Cinematic</option><option value="none">No music</option></select></Field>
                 <Field label="Length"><select data-testid="opt-length" value={opts.targetSeconds} onChange={(e) => edit(setOpts)({ ...opts, targetSeconds: Number(e.target.value) })}>{[10, 15, 20, 25, 30].map((n) => <option key={n} value={n}>{n} seconds</option>)}</select></Field>
                 <Field label="Presenter"><select data-testid="opt-presenter" value={opts.presenter} onChange={(e) => edit(setOpts)({ ...opts, presenter: e.target.value as Presenter })}>{(Object.keys(PRESENTER_NAMES) as Presenter[]).map((k) => <option key={k} value={k}>{PRESENTER_NAMES[k]}</option>)}</select></Field>
@@ -234,7 +234,7 @@ function CreateVideo({ onClose }: { onClose: () => void }) {
         <label className="check full"><input type="checkbox" checked={voice} onChange={(e) => setVoice(e.target.checked)} /> Voice-over (desktop app, uses this computer's own voices)</label>
         <Field label="Look">
           <select value={style} onChange={(e) => setStyle(e.target.value as VideoStyle)}>
-            <option value="">Automatic</option><option value="bold">Bold</option><option value="clean">Clean</option><option value="luxe">Luxury</option>
+            <option value="">Automatic</option><option value="real">Realistic (cinematic)</option><option value="bold">Bold</option><option value="clean">Clean</option><option value="luxe">Luxury</option>
           </select>
         </Field>
         <Field label="Music">
@@ -313,7 +313,7 @@ function UploadVideo({ onClose, onDone }: { onClose: () => void; onDone: (videoI
   );
 }
 
-const STYLE_NAMES: Record<VideoStyle, string> = { bold: 'Bold', clean: 'Clean', luxe: 'Luxury' };
+const STYLE_NAMES: Record<VideoStyle, string> = { real: 'Realistic (cinematic)', bold: 'Bold', clean: 'Clean', luxe: 'Luxury' };
 const MOOD_NAMES: Record<MusicMood, string> = { upbeat: 'Upbeat', chill: 'Chill', cinematic: 'Cinematic', none: 'No music' };
 
 /** Upload a video whose style you like; the app makes a new video for your product in that style. */

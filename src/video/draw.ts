@@ -21,10 +21,13 @@ interface StyleDef {
   dim: number;
   accent?: string;
   spacing: number;
+  /** Photo-real treatment: full-frame photos, handheld camera drift, colour grade, film grain, light leaks. */
+  cinematic?: boolean;
 }
 const STYLES: Record<VideoStyle, StyleDef> = {
   bold: { font: '"Arial Black", "Segoe UI Black", "Roboto Black", "Helvetica Neue", Arial, "Noto Sans Devanagari", "Noto Sans Telugu", "Noto Sans Tamil", sans-serif', weight: 900, upper: true, box: 'brand', dim: 0.3, spacing: 0 },
   clean: { font: '"Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Devanagari", "Noto Sans Telugu", "Noto Sans Tamil", sans-serif', weight: 700, upper: false, box: 'white', dim: 0.22, spacing: 0 },
+  real: { font: '"Segoe UI", Roboto, "Helvetica Neue", Arial, "Noto Sans Devanagari", "Noto Sans Telugu", "Noto Sans Tamil", sans-serif', weight: 600, upper: false, box: 'none', dim: 0.16, spacing: 0.01, cinematic: true },
   luxe: { font: 'Georgia, "Times New Roman", "Noto Serif", "Noto Sans Devanagari", "Noto Sans Telugu", "Noto Sans Tamil", serif', weight: 600, upper: false, box: 'none', dim: 0.42, accent: '#d9b871', spacing: 0.02 },
 };
 interface CompScene extends ScriptScene {
@@ -49,6 +52,9 @@ export interface Comp {
   presenter: Presenter;
   /** Mouth openness per frame (30 per second). */
   mouth: Float32Array | null;
+  seed: number;
+  /** Film-grain tile, made on first use (cinematic look only). */
+  grain?: CanvasImageSource | null;
 }
 
 export function buildComp(video: Video, images: Img[], s: Settings, extra: { mouth?: Float32Array | null } = {}): Comp {
@@ -78,6 +84,7 @@ export function buildComp(video: Video, images: Img[], s: Settings, extra: { mou
     business: s.business.name, images, cache: new Map(),
     presenter: video.presenter ?? 'none',
     mouth: extra.mouth ?? null,
+    seed: video.seed,
   };
 }
 
@@ -253,7 +260,9 @@ function background(ctx: Ctx, c: Comp, sc: CompScene, lt: number, alpha: number)
   const scale = lerp(sc.motion.s0, sc.motion.s1, k);
   const px = sc.motion.px * (k - 0.5), py = sc.motion.py * (k - 0.5);
   const m = Math.min(c.w, c.h);
-  if (!im || sc.layout === 'brand') {
+  if (c.style.cinematic && im) {
+    realPhoto(ctx, c, sc, im, lt);
+  } else if (!im || sc.layout === 'brand') {
     gradientBg(ctx, c, sc.start + lt);
   } else if (sc.layout === 'card') {
     cover(ctx, im, 0, 0, c.w, c.h, 1.25, 0, 0, true);
@@ -313,6 +322,112 @@ function background(ctx: Ctx, c: Comp, sc: CompScene, lt: number, alpha: number)
     ctx.fillRect(0, 0, c.w, c.h);
   }
   ctx.restore();
+}
+
+/**
+ * Realistic look: every scene is the full photo, filmed as if by a handheld camera doing a slow
+ * dolly-in, with a lower-third shade so text reads like a real ad.
+ */
+function realPhoto(ctx: Ctx, c: Comp, sc: CompScene, im: Img, lt: number) {
+  const m = Math.min(c.w, c.h);
+  const t = sc.start + lt;
+  const k = inOut(lt / sc.seconds);
+  // slow push-in; the closing scene pulls back a little to "settle" on the product
+  const scale = sc.kind === 'cta' ? lerp(1.14, 1.06, k) : lerp(1.06, 1.15, k);
+  const ph = (c.seed % 997) / 97;
+  const dx = Math.sin(t * 0.9 + ph) * m * 0.004 + Math.sin(t * 2.3 + ph * 2) * m * 0.0015;
+  const dy = Math.cos(t * 0.7 + ph) * m * 0.003 + Math.sin(t * 1.9 + ph) * m * 0.0012;
+  const rot = Math.sin(t * 0.5 + ph) * 0.0025;
+  ctx.save();
+  ctx.translate(c.w / 2 + dx, c.h / 2 + dy);
+  ctx.rotate(rot);
+  ctx.translate(-c.w / 2, -c.h / 2);
+  if (!contained(c, { ...sc, layout: 'full' })) {
+    cover(ctx, im, 0, 0, c.w, c.h, scale, sc.motion.px * (k - 0.5) * 0.6, sc.motion.py * (k - 0.5) * 0.6);
+  } else {
+    // shallow depth of field: soft, enlarged copy behind, the whole photo sharp in front
+    cover(ctx, im, 0, 0, c.w, c.h, 1.3 + (scale - 1) * 0.5, 0, 0, true);
+    ctx.fillStyle = 'rgba(6,8,12,0.28)';
+    ctx.fillRect(0, 0, c.w, c.h);
+    const base = Math.min((c.w * 0.86) / im.w, (c.h * 0.72) / im.h) * (0.94 + (scale - 1) * 0.6);
+    const dw = im.w * base, dh = im.h * base;
+    const x = (c.w - dw) / 2, y = c.h * 0.44 - dh / 2;
+    ctx.save();
+    ctx.shadowColor = 'rgba(0,0,0,0.6)'; ctx.shadowBlur = m * 0.06; ctx.shadowOffsetY = m * 0.02;
+    ctx.drawImage(im.src, x, y, dw, dh);
+    ctx.restore();
+  }
+  ctx.restore();
+  // lower-third shade (and a little at the top for the brand name), like a real ad
+  const g = ctx.createLinearGradient(0, 0, 0, c.h);
+  const strong = sc.kind === 'cta' || sc.kind === 'offer' ? 0.2 : 0;
+  g.addColorStop(0, 'rgba(0,0,0,0.28)');
+  g.addColorStop(0.22, 'rgba(0,0,0,0)');
+  g.addColorStop(0.5, `rgba(0,0,0,${0.12 + strong})`);
+  g.addColorStop(1, `rgba(0,0,0,${0.72 + strong * 0.5})`);
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, c.w, c.h);
+}
+
+function makeGrain(c: Comp): CanvasImageSource | null {
+  const size = 256;
+  let cv: any = null;
+  if (typeof OffscreenCanvas !== 'undefined') cv = new OffscreenCanvas(size, size);
+  else if (typeof document !== 'undefined') { cv = document.createElement('canvas'); cv.width = size; cv.height = size; }
+  const g = cv?.getContext('2d');
+  if (!g) return null;
+  const img = g.createImageData(size, size);
+  const r = rng(c.seed ^ 0x9e3779b9);
+  for (let i = 0; i < img.data.length; i += 4) {
+    const v = 128 + (r() - 0.5) * 255;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
+    img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  return cv;
+}
+
+/** Film finish for the realistic look: warm highlights, cool shadows, light leak on cuts, grain, vignette. */
+function filmGrade(ctx: Ctx, c: Comp, t: number, lt: number, cut: boolean) {
+  const m = Math.min(c.w, c.h);
+  ctx.save();
+  // colour grade: warm top light, teal shadows
+  ctx.globalCompositeOperation = 'soft-light';
+  const g = ctx.createLinearGradient(0, 0, c.w * 0.3, c.h);
+  g.addColorStop(0, 'rgba(255,176,102,0.55)');
+  g.addColorStop(1, 'rgba(24,72,96,0.55)');
+  ctx.fillStyle = g;
+  ctx.fillRect(0, 0, c.w, c.h);
+  // light leak sweeping across right after a cut
+  if (cut && lt < 0.9) {
+    const k = lt / 0.9;
+    ctx.globalCompositeOperation = 'screen';
+    const x = lerp(-0.2, 1.2, k) * c.w, y = c.h * 0.3;
+    const lg = ctx.createRadialGradient(x, y, 0, x, y, m * 0.9);
+    const a = 0.45 * Math.sin(Math.PI * k);
+    lg.addColorStop(0, `rgba(255,190,120,${a})`);
+    lg.addColorStop(0.5, `rgba(255,120,60,${a * 0.35})`);
+    lg.addColorStop(1, 'rgba(255,120,60,0)');
+    ctx.fillStyle = lg;
+    ctx.fillRect(0, 0, c.w, c.h);
+  }
+  // film grain, moving every frame
+  if (c.grain === undefined) c.grain = makeGrain(c);
+  if (c.grain) {
+    ctx.globalCompositeOperation = 'overlay';
+    ctx.globalAlpha = 0.07;
+    const f = Math.round(t * 30);
+    const ox = ((f * 73) % 256), oy = ((f * 151) % 256);
+    const tile = 256 * Math.max(1, Math.round(m / 720));
+    for (let y = -oy; y < c.h; y += tile) for (let x = -ox; x < c.w; x += tile) ctx.drawImage(c.grain, x, y, tile, tile);
+  }
+  ctx.restore();
+  // deeper vignette than the graphic looks
+  const v = ctx.createRadialGradient(c.w / 2, c.h / 2, m * 0.38, c.w / 2, c.h / 2, Math.hypot(c.w, c.h) / 2);
+  v.addColorStop(0, 'rgba(0,0,0,0)');
+  v.addColorStop(1, 'rgba(0,0,0,0.42)');
+  ctx.fillStyle = v;
+  ctx.fillRect(0, 0, c.w, c.h);
 }
 
 // ---------- scene foregrounds ----------
@@ -454,12 +569,14 @@ function foreground(ctx: Ctx, c: Comp, sc: CompScene, lt: number, last: boolean)
 
 function chrome(ctx: Ctx, c: Comp, t: number, sc: CompScene) {
   const m = Math.min(c.w, c.h);
-  // soft vignette
-  const v = ctx.createRadialGradient(c.w / 2, c.h / 2, m * 0.45, c.w / 2, c.h / 2, Math.hypot(c.w, c.h) / 2);
-  v.addColorStop(0, 'rgba(0,0,0,0)');
-  v.addColorStop(1, 'rgba(0,0,0,0.32)');
-  ctx.fillStyle = v;
-  ctx.fillRect(0, 0, c.w, c.h);
+  // soft vignette (the realistic look draws its own, deeper one)
+  if (!c.style.cinematic) {
+    const v = ctx.createRadialGradient(c.w / 2, c.h / 2, m * 0.45, c.w / 2, c.h / 2, Math.hypot(c.w, c.h) / 2);
+    v.addColorStop(0, 'rgba(0,0,0,0)');
+    v.addColorStop(1, 'rgba(0,0,0,0.32)');
+    ctx.fillStyle = v;
+    ctx.fillRect(0, 0, c.w, c.h);
+  }
   // brand chip
   if (c.business && sc.kind !== 'cta') {
     const a = clamp((t - 0.4) / 0.5);
@@ -476,6 +593,7 @@ function chrome(ctx: Ctx, c: Comp, t: number, sc: CompScene) {
     ctx.fillText(c.business, x + size * 1.2, y + size * 0.05);
     ctx.restore();
   }
+  if (c.style.cinematic) return; // no on-screen progress bar in the realistic look
   // progress line
   ctx.fillStyle = 'rgba(255,255,255,0.22)';
   ctx.fillRect(0, c.h - m * 0.008, c.w, m * 0.008);
@@ -507,6 +625,7 @@ export function drawFrame(ctx: Ctx, c: Comp, t: number) {
   } else {
     background(ctx, c, sc, lt, 1);
   }
+  if (c.style.cinematic) filmGrade(ctx, c, t, lt, i > 0);
   foreground(ctx, c, sc, lt, i === c.scenes.length - 1);
   if (c.presenter !== 'none') {
     const m = Math.min(c.w, c.h);

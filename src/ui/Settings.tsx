@@ -88,7 +88,7 @@ export function SettingsPage() {
           ))}
           <div className="form">
             <Field label="Video look">
-              <select value={s.autopilot.videoStyle} onChange={(e) => auto({ videoStyle: e.target.value as any })}><option value="auto">Automatic</option><option value="bold">Bold</option><option value="clean">Clean</option><option value="luxe">Luxury</option></select>
+              <select value={s.autopilot.videoStyle} onChange={(e) => auto({ videoStyle: e.target.value as any })}><option value="auto">Automatic</option><option value="real">Realistic (cinematic)</option><option value="bold">Bold</option><option value="clean">Clean</option><option value="luxe">Luxury</option></select>
             </Field>
             <Field label="Music">
               <select value={s.autopilot.mood} onChange={(e) => auto({ mood: e.target.value as any })}><option value="auto">Automatic</option><option value="upbeat">Upbeat</option><option value="chill">Chill</option><option value="cinematic">Cinematic</option><option value="none">No music</option></select>

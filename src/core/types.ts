@@ -1,5 +1,6 @@
 export type VideoFormat = 'reel' | 'square' | 'wide';
-export type VideoStyle = 'bold' | 'clean' | 'luxe';
+/** `real`: realistic, cinematic look built from the product photos (camera drift, colour grade, film grain, light leaks). */
+export type VideoStyle = 'bold' | 'clean' | 'luxe' | 'real';
 export type Lang = 'en' | 'hi' | 'te' | 'ta';
 export const LANG_NAMES: Record<Lang, string> = { en: 'English', hi: 'हिन्दी (Hindi)', te: 'తెలుగు (Telugu)', ta: 'தமிழ் (Tamil)' };
 export type Presenter = 'none' | 'host-a' | 'host-b';

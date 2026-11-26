@@ -10,7 +10,7 @@ import { uid, type Lang, type Presenter, type Message, type MusicMood, type Plat
 
 const DAY = 86_400_000;
 const STYLES: VideoStyle[] = ['bold', 'clean', 'luxe'];
-const MOOD_FOR: Record<VideoStyle, MusicMood> = { bold: 'upbeat', clean: 'chill', luxe: 'cinematic' };
+const MOOD_FOR: Record<VideoStyle, MusicMood> = { bold: 'upbeat', clean: 'chill', luxe: 'cinematic', real: 'cinematic' };
 const POST_PLATFORMS: Platform[] = ['instagram', 'facebook', 'youtube', 'whatsapp', 'email', 'ad'];
 const POST_HOURS = [10, 13, 18, 20];
 
@@ -19,7 +19,8 @@ export function newVideo(p: Product, s: Settings, format: VideoFormat, opts: { s
   const lang = opts.lang ?? 'en';
   const seed = opts.seed ?? Math.floor(Math.random() * 2 ** 31);
   const r = rng(seed);
-  const style = opts.style ?? (s.autopilot.videoStyle === 'auto' ? (s.tone === 'luxury' ? 'luxe' : STYLES[Math.floor(r() * 3)]) : s.autopilot.videoStyle);
+  // Automatic: a realistic, cinematic video whenever there are real product photos to film; otherwise a graphic look.
+  const style = opts.style ?? (s.autopilot.videoStyle === 'auto' ? (p.imageIds.length ? 'real' : s.tone === 'luxury' ? 'luxe' : STYLES[Math.floor(r() * 3)]) : s.autopilot.videoStyle);
   const mood = opts.mood ?? (s.autopilot.mood === 'auto' ? MOOD_FOR[style] : s.autopilot.mood);
   const copy = buildCopy(p, s, format === 'wide' ? 'youtube' : 'instagram', seed);
   return {

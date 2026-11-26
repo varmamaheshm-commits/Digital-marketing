@@ -83,3 +83,22 @@ describe('making a video in the reference style', () => {
     expect(describeReference(look())).toBe('15 seconds, 8 shots (steady cuts), medium-bright, vivid colours');
   });
 });
+
+describe('realistic (cinematic) videos', () => {
+  const base = { id: 'p1', name: 'Glow Serum', category: 'skincare', description: 'A light vitamin C serum.', price: '499', offer: '20% off', features: ['Vitamin C'], audience: 'women', keywords: [], active: true, createdAt: 0 };
+  it('Autopilot films products that have photos in the realistic look, and keeps graphic looks for products without', async () => {
+    const { newVideo } = await import('../src/core/autopilot');
+    const { DEFAULT_SETTINGS } = await import('../src/core/types');
+    const withPhotos = newVideo({ ...base, imageIds: ['a', 'b'] } as any, DEFAULT_SETTINGS, 'reel', { seed: 7 });
+    expect(withPhotos).toMatchObject({ style: 'real', mood: 'cinematic' });
+    const noPhotos = newVideo({ ...base, imageIds: [] } as any, DEFAULT_SETTINGS, 'reel', { seed: 7 });
+    expect(noPhotos.style).not.toBe('real');
+    expect(newVideo({ ...base, imageIds: ['a'] } as any, DEFAULT_SETTINGS, 'reel', { style: 'bold' }).style).toBe('bold'); // the owner's choice wins
+  });
+  it('turns on the film treatment only for the realistic look', () => {
+    const s = { brand: { primary: '#000000', accent: '#ffffff' }, business: { name: 'Shop' } } as any;
+    const v = { id: 'v', productId: 'p', format: 'reel', style: 'real', mood: 'cinematic', seed: 3, script, caption: '', hashtags: [], title: '', status: 'queued', createdAt: 0 } as Video;
+    expect(buildComp(v, [], s).style).toMatchObject({ cinematic: true, upper: false, box: 'none' });
+    expect(buildComp({ ...v, style: 'bold' }, [], s).style.cinematic).toBeFalsy();
+  });
+});
